@@ -1,4 +1,4 @@
-# Blockchain-Hack-Swissquote-Track — Swissquote Wallet Challenge
+# Blockchain Hack — Swissquote Track: Wallet Challenge
 
 A self-custody wallet Swissquote could realistically launch for its clients: **their keys, their control**, while staying one step away from their Swissquote account.
 

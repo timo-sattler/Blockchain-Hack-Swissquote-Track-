@@ -8,6 +8,7 @@ node_modules/
 .next/
 dist/
 build/
+*.tsbuildinfo
 
 # Foundry / Hardhat
 out/
@@ -20,3 +21,6 @@ typechain-types/
 .DS_Store
 .vscode/
 .idea/
+
+# Reference screenshots of the real Swissquote app (may contain personal data)
+pitch/swissquote-app/

@@ -1,0 +1,905 @@
+/* Swissquote-style shell. Light theme only, like the original app; the wallet components
+   inherit these tokens so the Crypto tab looks native. */
+
+html:has(.sq-app),
+body:has(.sq-app) {
+  background: #eef0f8;
+}
+
+.sq-app {
+  --bg: #eef0f8;
+  --surface: #ffffff;
+  --surface-2: #f3f4f9;
+  --text: #1d2230;
+  --muted: #6b7183;
+  --line: #e4e7f0;
+  --accent: #f05a2a;
+  --accent-soft: rgba(240, 90, 42, 0.1);
+  --ok: #0b8f5c;
+  --ok-soft: #e1f4ea;
+  --warn-soft: #fff1dc;
+  --error: #d8211b;
+  --hero-from: #f47a45;
+  --hero-to: #e5482a;
+  --hero-glow: rgba(255, 214, 170, 0.35);
+  --shadow: 0 1px 2px rgba(20, 30, 60, 0.05), 0 6px 18px rgba(20, 30, 60, 0.05);
+  font-family: 'Hind', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+.sq-main {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+    calc(100px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sq-app h1,
+.sq-app h2,
+.sq-app p {
+  margin: 0;
+}
+
+.sq-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.sq-footnote {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+/* ---------- Header ---------- */
+
+.sq-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sq-header-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+}
+
+.sq-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 18px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sq-round-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.sq-round {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.08);
+}
+
+.sq-demo {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* ---------- Cards ---------- */
+
+.sq-card {
+  background: var(--surface);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.sq-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.sq-card-head h2,
+.sq-list-head h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.sq-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 500;
+  padding: 0;
+}
+
+.sq-primary {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  background: var(--accent);
+  color: #fff;
+}
+
+.sq-outline {
+  width: 100%;
+  margin-top: 12px;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  padding: 12px;
+  font-weight: 600;
+  font-size: 15px;
+  background: transparent;
+  color: var(--accent);
+}
+
+/* ---------- Home ---------- */
+
+.sq-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: -4px;
+}
+
+.sq-total span {
+  font-size: 17px;
+}
+
+.sq-total strong {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-total small {
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.sq-muted-title {
+  font-size: 15px;
+}
+
+.sq-big-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-big-value small {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.sq-gain {
+  margin-top: 4px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.sq-gain em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--text);
+}
+
+.sq-chart {
+  display: block;
+  width: 100%;
+  height: 120px;
+  margin-top: 10px;
+}
+
+.sq-periods {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #eef0f6;
+}
+
+.sq-periods button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sq-periods button.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.12);
+}
+
+.sq-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.sq-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+
+.sq-tile.link:hover {
+  border-color: var(--accent);
+}
+
+.sq-tile-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.sq-tile-label svg:first-child {
+  color: var(--accent);
+}
+
+.sq-tile-label svg:last-child {
+  margin-left: auto;
+  color: var(--muted);
+}
+
+.sq-tile strong {
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-quick {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 4px;
+}
+
+.sq-quick button,
+.sq-card-actions button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: none;
+  font-size: 13.5px;
+  color: var(--text);
+}
+
+.sq-quick span {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #2a2e3a;
+  color: #fff;
+}
+
+/* ---------- Trade ---------- */
+
+.sq-sections {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sq-sections button {
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 6px 0;
+  font-size: 16px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+}
+
+.sq-sections button.active {
+  color: var(--text);
+  font-weight: 600;
+  border-bottom-color: var(--accent);
+}
+
+.sq-filters {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sq-filters button {
+  flex: none;
+  border: 1px solid #dfe2ea;
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 7px 16px;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.sq-filters button.active {
+  background: #e2e5ee;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.sq-updated {
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: -6px;
+}
+
+.sq-index-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #eceef4;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sq-quotes,
+.sq-coins,
+.sq-transactions,
+.sq-plans {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sq-quotes li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto 66px 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 0;
+}
+
+.sq-quotes li > svg {
+  color: var(--muted);
+}
+
+.sq-badge-t {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sq-quote-name {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sq-quote-name strong {
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.sq-quote-name span {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sq-quote-price {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sq-quote-price small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sq-change {
+  border-radius: 4px;
+  padding: 6px 0;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-change.up {
+  background: #0b8a57;
+}
+
+.sq-change.down {
+  background: #e3120b;
+}
+
+/* ---------- Bank ---------- */
+
+.sq-toggle {
+  align-self: center;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
+  background: #e4e7ef;
+}
+
+.sq-toggle button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 6px 22px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.sq-toggle button.active {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.1);
+}
+
+.sq-debit {
+  align-self: center;
+  width: 82%;
+  max-width: 320px;
+  aspect-ratio: 1.6;
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  color: #fff;
+  background: linear-gradient(135deg, #f58451, #e9532c);
+  box-shadow: 0 12px 28px rgba(233, 83, 44, 0.3);
+}
+
+.sq-debit-top,
+.sq-debit-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sq-debit-top span {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.sq-debit-top strong {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sq-debit-bottom span:first-child {
+  font-size: 15px;
+  letter-spacing: 1px;
+}
+
+.sq-debit-chip {
+  width: 38px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.sq-available {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.sq-available strong {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.sq-available span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sq-available svg {
+  color: #3b82f6;
+}
+
+.sq-card-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.sq-card-actions svg {
+  box-sizing: content-box;
+  padding: 12px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(20, 30, 60, 0.08);
+}
+
+.sq-list-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+
+.sq-transactions {
+  padding: 4px 16px;
+}
+
+.sq-transactions li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.sq-transactions li + li,
+.sq-coins li + li {
+  border-top: 1px solid var(--line);
+}
+
+.sq-transactions li > svg {
+  color: var(--muted);
+}
+
+.sq-tx-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: #f0f1f5;
+  flex: none;
+}
+
+.sq-tx-name {
+  flex: 1;
+  font-size: 14px;
+}
+
+.sq-tx-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-tx-amount small {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sq-tx-amount small.done {
+  color: var(--ok);
+}
+
+.sq-empty p {
+  margin-top: 6px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ---------- Plan ---------- */
+
+.sq-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sq-plans li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sq-plans li > div {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sq-plans strong {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.sq-plans li > svg {
+  color: var(--muted);
+}
+
+.sq-progress {
+  height: 6px;
+  margin: 6px 0 2px;
+  border-radius: 999px;
+  background: #eceef4;
+  overflow: hidden;
+}
+
+.sq-progress i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* ---------- Crypto ---------- */
+
+.sq-coins {
+  margin-top: 8px;
+}
+
+.sq-coins li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.sq-coins li > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.sq-coins strong {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sq-coins li > div span {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sq-coin {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  flex: none;
+}
+
+.sq-coin-value {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sq-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.sq-section-title h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.sq-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.sq-live i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-soft);
+}
+
+.sq-section-sub {
+  margin-top: -8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sq-wallet {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sq-move {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.sq-move .badge {
+  align-self: flex-start;
+}
+
+.sq-move ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  counter-reset: step;
+}
+
+.sq-move li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0 10px 40px;
+  counter-increment: step;
+}
+
+.sq-move li::before {
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.sq-move li span {
+  font-size: 13.5px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Wallet components inside the Swissquote theme */
+
+.sq-app .balance-card {
+  box-shadow: 0 16px 36px rgba(229, 72, 42, 0.28);
+}
+
+.sq-app .actions button:first-child span {
+  background: #fff;
+  color: var(--accent);
+}
+
+.sq-app .primary {
+  box-shadow: 0 6px 18px rgba(240, 90, 42, 0.28);
+}
+
+.sq-app .onboarding {
+  padding-top: 8px;
+}
+
+.sq-app .onboarding h1 {
+  font-size: 34px;
+}
+
+/* ---------- Bottom navigation ---------- */
+
+.sq-nav {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 5;
+  transform: translateX(-50%);
+  width: min(480px, 100%);
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  padding: 8px 4px calc(10px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -2px 18px rgba(20, 30, 60, 0.07);
+}
+
+.sq-nav button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 0;
+  background: none;
+  padding: 4px 0;
+  font-size: 13px;
+  color: #3a3f4d;
+}
+
+.sq-nav button.active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.sq-new-dot {
+  position: absolute;
+  top: 3px;
+  left: calc(50% + 10px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface);
+}
