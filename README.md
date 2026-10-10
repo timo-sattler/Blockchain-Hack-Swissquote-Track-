@@ -4,6 +4,8 @@ A self-custody wallet Swissquote could realistically launch for its clients: **t
 
 The demo must cover the full lifecycle **create → authenticate → sign & send (testnet) → lose access → recover**.
 
+Full challenge text: [`docs/challenge-brief.md`](docs/challenge-brief.md) · Weekend plan and checklist: [`PLAN.md`](PLAN.md)
+
 ## Team
 
 | Person  | Focus area (to be agreed) |
@@ -23,7 +25,8 @@ The demo must cover the full lifecycle **create → authenticate → sign & send
 ├── backend/     Services + clearly marked mocks (Swissquote bank, compliance, guardians)
 ├── scripts/     Deployment and demo scripts (testnet)
 ├── docs/        Custody model, threat model, architecture, recovery, legal, business case
-└── pitch/       Slides, demo script, screenshots
+├── pitch/       Slides, demo script, screenshots
+└── members/     Personal scratch folder per team member
 ```
 
 Each folder has its own README describing what belongs there.
