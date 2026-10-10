@@ -1,33 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPublicClient, formatUnits, http, isAddress, parseAbiItem, type Address } from 'viem'
 import { baseSepolia } from 'viem/chains'
-import { RPC_URL, USDC } from '../config'
+import { BTC_EXPLORER, HUB_URL, MEMPOOL_API, RPC_URL, USDC } from '../config'
 
 /** Key-share holders: A = client phone, B = Swissquote share service, C = recovery kit. */
 export type Party = 'A' | 'B' | 'C'
 export type Chain = 'bitcoin' | 'base'
 
 /**
- * Events the share service publishes on its server-sent-events stream (VITE_EVENTS_URL).
+ * Events the services and the wallet app publish through the event hub (services/hub.mjs).
  * The service emits exactly these JSON objects, one per `data:` line.
  */
 export type WalletEvent =
-  | { type: 'wallet_created'; btcAddress: string; evmAddress: string }
+  | { type: 'wallet_created'; btcAddress: string; evmAddress: string; name?: string }
   | { type: 'signing'; parties: Party[] }
-  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string }
+  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string; from?: string; to?: string }
   | { type: 'service_offline' }
   | { type: 'service_online' }
   | { type: 'recovery_requested'; by: 'client' | 'attacker' }
   | { type: 'recovery_refused'; reason: string }
   | { type: 'recovery_completed' }
+  | { type: 'device_paired'; name?: string }
+  | { type: 'funded'; name?: string; to: string; usdc: string; eth: string; hash: string }
 
 export type FeedItem = WalletEvent & { id: string; at: number; source: 'service' | 'chain' | 'simulated' }
 
-export type ServiceStatus = 'connected' | 'offline' | 'not-configured'
+/** Connection to the event hub (not the share service: its health arrives as events). */
+export type ServiceStatus = 'connected' | 'offline'
 
-const EVENTS_URL = import.meta.env.VITE_EVENTS_URL || ''
-export const MEMPOOL_API = import.meta.env.VITE_MEMPOOL_API || 'https://mempool.space/testnet4/api'
-export const BTC_EXPLORER = MEMPOOL_API.replace('/api', '')
+const EVENTS_URL = import.meta.env.VITE_EVENTS_URL || `${HUB_URL}/events`
 export const EVM_EXPLORER = 'https://sepolia.basescan.org'
 
 const publicClient = createPublicClient({ chain: baseSepolia, transport: http(RPC_URL) })
@@ -56,38 +57,86 @@ const nextId = () => `${Date.now()}-${counter++}`
 /** Live feed: share-service events, on-chain transfers of the known wallets, and the optional simulation. */
 export function useLiveFeed() {
   const [items, setItems] = useState<FeedItem[]>([])
-  const [status, setStatus] = useState<ServiceStatus>(EVENTS_URL ? 'offline' : 'not-configured')
+  const [status, setStatus] = useState<ServiceStatus>('offline')
+  const [shareOnline, setShareOnline] = useState<boolean | null>(null)
   const [simulating, setSimulating] = useState(false)
-  const [wallet, setWallet] = useState<{ btc: string; evm: string } | null>(initialWallet)
+  const [wallets, setWallets] = useState<WatchedWallet[]>(initialWallets)
   const timers = useRef<number[]>([])
 
   const push = useCallback((event: WalletEvent, source: FeedItem['source'], at = Date.now(), id = nextId()) => {
-    setItems((current) => (current.some((i) => i.id === id) ? current : [{ ...event, id, at, source }, ...current].slice(0, 60)))
-    if (event.type === 'wallet_created' && source !== 'simulated') setWallet({ btc: event.btcAddress, evm: event.evmAddress })
+    setItems((current) => {
+      const duplicate = current.some(
+        (i) => i.id === id || (event.type === 'tx_broadcast' && i.type === 'tx_broadcast' && i.hash === event.hash && i.source !== 'simulated'),
+      )
+      return duplicate ? current : [{ ...event, id, at, source }, ...current].sort((a, b) => b.at - a.at).slice(0, 60)
+    })
+    if (event.type === 'wallet_created' && source !== 'simulated')
+      setWallets((current) =>
+        current.some((w) => w.evm === event.evmAddress) ? current : [...current, { btc: event.btcAddress, evm: event.evmAddress }].slice(-MAX_WATCHED),
+      )
+    if (event.type === 'service_offline' || event.type === 'service_online') setShareOnline(event.type === 'service_online')
   }, [])
 
-  // Share service stream.
+  // Event hub stream: first the current state and history, then every event as it happens.
+  // Some tunnels buffer server-sent events; if no state arrives within 3 s, poll the hub instead.
   useEffect(() => {
-    if (!EVENTS_URL) return
+    type HubState = { shareOnline: boolean | null; history: (WalletEvent & { id: string; at: number })[] }
+    let streaming = false
+    let pollTimer: number | undefined
+
+    const applyState = (state: HubState, replace: boolean) => {
+      setShareOnline(state.shareOnline)
+      if (replace) setItems((current) => current.filter((i) => i.source !== 'service'))
+      for (const entry of state.history) push(entry, 'service', entry.at, entry.id)
+    }
+
     const source = new EventSource(EVENTS_URL)
     source.onopen = () => setStatus('connected')
-    source.onerror = () => setStatus('offline')
+    source.onerror = () => !pollTimer && setStatus('offline')
+    source.addEventListener('state', (message) => {
+      streaming = true
+      setStatus('connected')
+      applyState(JSON.parse((message as MessageEvent).data), true)
+    })
     source.onmessage = (message) => {
       try {
-        push(JSON.parse(message.data) as WalletEvent, 'service')
+        const entry = JSON.parse(message.data) as WalletEvent & { id: string; at: number }
+        push(entry, 'service', entry.at, entry.id)
       } catch {
-        // Ignore malformed lines; the stream also carries heartbeats.
+        // Ignore malformed lines.
       }
     }
-    return () => source.close()
+
+    const fallback = window.setTimeout(() => {
+      if (streaming) return
+      source.close()
+      const poll = async () => {
+        try {
+          const response = await fetch(`${HUB_URL}/state`, { cache: 'no-store' })
+          applyState((await response.json()) as HubState, false)
+          setStatus('connected')
+        } catch {
+          setStatus('offline')
+        }
+      }
+      poll()
+      pollTimer = window.setInterval(poll, 1000)
+    }, 3000)
+
+    return () => {
+      source.close()
+      window.clearTimeout(fallback)
+      window.clearInterval(pollTimer)
+    }
   }, [push])
 
-  // On-chain transfers, read straight from the chains so they don't depend on our own services.
+  // On-chain transfers of every wallet created in this session, read straight from the chains so they
+  // don't depend on our own services.
   useEffect(() => {
-    if (!wallet) return
+    if (wallets.length === 0) return
     let stopped = false
     const poll = async () => {
-      const found = await Promise.allSettled([baseTransfers(wallet.evm), bitcoinTransfers(wallet.btc)])
+      const found = await Promise.allSettled(wallets.flatMap((w) => [baseTransfers(w.evm), bitcoinTransfers(w.btc)]))
       if (stopped) return
       for (const result of found) {
         if (result.status !== 'fulfilled') continue
@@ -95,12 +144,12 @@ export function useLiveFeed() {
       }
     }
     poll()
-    const timer = window.setInterval(poll, 10_000)
+    const timer = window.setInterval(poll, 15_000)
     return () => {
       stopped = true
       window.clearInterval(timer)
     }
-  }, [wallet, push])
+  }, [wallets, push])
 
   const simulate = useCallback(() => {
     timers.current.forEach(window.clearTimeout)
@@ -122,15 +171,18 @@ export function useLiveFeed() {
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
 
-  return { items, status, simulating, simulate, clear, wallet }
+  return { items, status, shareOnline, simulating, simulate, clear, wallets }
 }
 
+type WatchedWallet = { btc: string; evm: string }
+const MAX_WATCHED = 12 // keeps the public explorer APIs within their rate limits
+
 /** Wallet addresses can be passed in the URL (?evm=0x…&btc=tb1…) to watch an existing wallet. */
-function initialWallet() {
+function initialWallets(): WatchedWallet[] {
   const params = new URLSearchParams(window.location.search)
   const evm = params.get('evm') ?? ''
   const btc = params.get('btc') ?? ''
-  return evm || btc ? { evm, btc } : null
+  return evm || btc ? [{ evm, btc }] : []
 }
 
 type ChainTx = { event: Extract<WalletEvent, { type: 'tx_broadcast' }>; at: number }

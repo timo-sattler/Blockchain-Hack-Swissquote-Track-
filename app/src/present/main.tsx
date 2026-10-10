@@ -59,8 +59,14 @@ function Deck() {
         <footer className="deck-bar">
           <span className={`live-pill ${live.status}`}>
             <i />
-            {live.status === 'connected' ? 'Share service live' : live.status === 'offline' ? 'Share service offline' : 'Share service not configured'}
+            {live.status === 'connected' ? 'Live: event hub connected' : 'Event hub offline'}
           </span>
+          {live.status === 'connected' && live.shareOnline !== null && (
+            <span className={`live-pill ${live.shareOnline ? 'connected' : 'offline'}`}>
+              <i />
+              {live.shareOnline ? 'Swissquote share service online' : 'Swissquote share service offline'}
+            </span>
+          )}
           {live.simulating && <span className="sim-pill">SIMULATED EVENTS</span>}
           <div className="progress">
             {SLIDES.map((s, i) => (

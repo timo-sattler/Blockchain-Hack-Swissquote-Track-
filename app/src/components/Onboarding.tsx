@@ -1,20 +1,43 @@
-import { useState } from 'react'
-import { createPasskey, explainError, type StoredPasskey } from '../wallet'
+import { useState, type FormEvent } from 'react'
 import { Fingerprint, Shield, Users } from './icons'
 
-export function Onboarding({ clientName, onCreated }: { clientName: string; onCreated: (p: StoredPasskey) => void }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+const NAME_KEY = 'sq-mpc:last-name'
 
-  async function create() {
-    setBusy(true)
-    setError('')
+function lastName() {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export function Onboarding({
+  busy,
+  progress,
+  error,
+  onCreate,
+  onLogin,
+  onRecover,
+}: {
+  busy: boolean
+  progress?: string
+  error?: string
+  onCreate: (name: string) => void
+  onLogin: () => void
+  onRecover: () => void
+}) {
+  const [name, setName] = useState(lastName)
+  const trimmed = name.trim()
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (trimmed.length < 2) return
     try {
-      onCreated(await createPasskey(`Swissquote Wallet – ${clientName}`))
-    } catch (e) {
-      setError(explainError(e))
-      setBusy(false)
+      localStorage.setItem(NAME_KEY, trimmed)
+    } catch {
+      // Only a convenience for the next visit.
     }
+    onCreate(trimmed)
   }
 
   return (
@@ -24,16 +47,13 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
         <span className="ring delay" />
         <Fingerprint width="56" height="56" strokeWidth="1.4" />
       </div>
-      <p className="eyebrow">Hi {clientName.split(' ')[0]} 👋</p>
+      <p className="eyebrow">{trimmed ? `Hi ${trimmed.split(' ')[0]} 👋` : 'Welcome 👋'}</p>
       <h1>
         Your keys.
         <br />
         <span className="accent-text">Your control.</span>
       </h1>
-      <p className="lead">
-        A self-custody wallet that feels like your banking app. No seed phrase to write down. Just your face or
-        fingerprint.
-      </p>
+      <p className="lead">One wallet for Bitcoin and Ethereum. No seed phrase: your face or fingerprint, plus a recovery kit you keep.</p>
 
       <ul className="perks">
         <li>
@@ -42,7 +62,7 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
           </span>
           <div>
             <strong>Sign with Face ID</strong>
-            <span>Your key lives in your phone's secure chip and never leaves it.</span>
+            <span>Your phone holds one of three key shares. The full key never exists anywhere.</span>
           </div>
         </li>
         <li>
@@ -50,8 +70,8 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
             <Shield />
           </span>
           <div>
-            <strong>Only you can move funds</strong>
-            <span>Not even Swissquote. The blockchain enforces it.</span>
+            <strong>Swissquote can never act alone</strong>
+            <span>It holds one share: it can check and co-sign, but not move or freeze your funds.</span>
           </div>
         </li>
         <li>
@@ -60,16 +80,33 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
           </span>
           <div>
             <strong>Lose your phone, not your money</strong>
-            <span>Recover with guardians you choose. Coming next.</span>
+            <span>Your recovery kit plus an identity check bring the wallet back, with the same addresses.</span>
           </div>
         </li>
       </ul>
 
-      <button className="primary big" onClick={create} disabled={busy}>
-        {busy ? 'Waiting for your passkey…' : 'Create my wallet'}
-      </button>
+      <form className="create-form" onSubmit={submit}>
+        <label className="field">
+          Your name
+          <div className="input-row">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Anna Muster" autoComplete="name" maxLength={60} disabled={busy} />
+          </div>
+        </label>
+        <button className="primary big" disabled={busy || trimmed.length < 2}>
+          {busy ? (progress ?? 'Working…') : 'Create my wallet'}
+        </button>
+      </form>
       {error && <p className="error center">{error}</p>}
-      <p className="fineprint">Takes about 5 seconds · Base Sepolia testnet</p>
+
+      <div className="divider">
+        <span>Already have a wallet?</span>
+      </div>
+      <button className="secondary big with-icon" onClick={onLogin} disabled={busy}>
+        <Fingerprint /> Log in with my passkey
+      </button>
+      <button className="text-btn" onClick={onRecover} disabled={busy}>
+        Lost your phone and passkey? Recover with your kit
+      </button>
     </section>
   )
 }

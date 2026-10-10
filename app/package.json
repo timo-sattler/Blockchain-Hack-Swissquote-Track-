@@ -10,6 +10,11 @@
     "typecheck": "tsc -b"
   },
   "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1",
+    "@silencelaboratories/dkls-wasm-ll-web": "^1.2.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "qrcode": "^1.5.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
