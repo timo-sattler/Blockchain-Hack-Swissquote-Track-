@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { AppPhone } from './AppPhone'
 import { Feed } from './Feed'
 import { JoinSlide } from './JoinSlide'
 import { LiveArchitecture } from './LiveArchitecture'
@@ -168,10 +169,11 @@ export const SLIDES: Slide[] = [
             <h1>Who pays whom, right now</h1>
           </div>
         </div>
-        <div className="live-grid">
+        <div className="live-grid with-app">
           <div className="network-panel">
             <NetworkGraph items={items} />
           </div>
+          <AppPhone />
           <div className="feed-panel">
             <h2>Activity</h2>
             <Feed items={items} compact />

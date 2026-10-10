@@ -733,6 +733,68 @@ p {
   text-anchor: middle;
 }
 
+/* ---------- App next to the network ---------- */
+
+.live-grid.with-app {
+  grid-template-columns: 1fr 300px 340px;
+}
+
+.app-phone-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-height: 0;
+}
+
+.app-phone {
+  position: relative;
+  width: 300px;
+  height: 626px;
+  padding: 10px;
+  border-radius: 44px;
+  background: #161a24;
+  box-shadow: 0 16px 40px rgba(20, 30, 60, 0.22);
+  flex: none;
+}
+
+.app-phone-notch {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  width: 86px;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: #000;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.app-phone-screen {
+  width: 280px;
+  height: 606px;
+  border-radius: 34px;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* The app is laid out at a real phone size (390 x 844) and scaled down to the screen. */
+.app-phone-screen iframe {
+  width: 390px;
+  height: 844px;
+  border: 0;
+  transform: scale(0.718);
+  transform-origin: 0 0;
+  display: block;
+}
+
+.app-phone-caption {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* ---------- Join ---------- */
 
 .join {
