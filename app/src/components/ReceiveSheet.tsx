@@ -5,8 +5,18 @@ import { Sheet } from './Sheet'
 
 export type ReceiveOption = { label: string; network: string; address: string }
 
-export function ReceiveSheet({ options, onCopy, onClose }: { options: ReceiveOption[]; onCopy: (address: string) => void; onClose: () => void }) {
-  const [selected, setSelected] = useState(0)
+export function ReceiveSheet({
+  options,
+  initial = 0,
+  onCopy,
+  onClose,
+}: {
+  options: ReceiveOption[]
+  initial?: number
+  onCopy: (address: string) => void
+  onClose: () => void
+}) {
+  const [selected, setSelected] = useState(initial)
   const [qr, setQr] = useState('')
   const option = options[selected]
 

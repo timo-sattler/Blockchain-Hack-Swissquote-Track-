@@ -21,8 +21,18 @@ type Step =
 
 const QUICK: Record<Asset, string[]> = { USDC: ['1', '5', '10'], ETH: ['0.0001', '0.0005'], BTC: ['0.0001', '0.0005', '0.001'] }
 
-export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet; onClose: () => void; onSent: (t: SentTransfer) => void }) {
-  const [asset, setAsset] = useState<Asset>('USDC')
+export function MpcSendSheet({
+  wallet,
+  initialAsset = 'USDC',
+  onClose,
+  onSent,
+}: {
+  wallet: PhoneWallet
+  initialAsset?: Asset
+  onClose: () => void
+  onSent: (t: SentTransfer) => void
+}) {
+  const [asset, setAsset] = useState<Asset>(initialAsset)
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [step, setStep] = useState<Step>({ name: 'form' })
