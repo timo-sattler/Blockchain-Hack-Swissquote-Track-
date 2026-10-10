@@ -81,6 +81,37 @@ The user can change guardians and parameters, but each change is itself time-loc
 - Every recovery step is an on-chain event, visible to the user and auditors.
 - Users who want zero involvement from Swissquote can replace Guardian 1 with someone else and disable the escrow path.
 
+## The three threat questions from the brief
+
+| Question | Answer |
+|----------|--------|
+| **Who could steal funds?** | Only someone who controls the owner passkey (device + biometrics). A recovery-based theft needs 2 guardians **and** the owner ignoring alerts for 48 h. Card (optional): at most the daily limit |
+| **Who could lock the client out?** | Nobody can freeze or block the account. Losing the device is covered by the backup passkey and guardian recovery. Guardians can't block the owner; they can only approve recoveries |
+| **Could Swissquote move funds without the client?** | **Alone: no** (only 1 of 2 approvals; can't execute transfers). **With a partner** (e.g. the trusted contact): they could rotate the key, but only after a 48 h public time-lock in which the owner is alerted on all channels and can cancel. This is the residual grey zone; see the open decision below |
+
+## If Swissquote disappears
+
+The account is a contract on a public chain, so it does not depend on Swissquote:
+- The owner passkey keeps working; the client can use any ERC-4337 / Safe-compatible interface and any public bundler.
+- Recovery still works **without Swissquote**: backup passkey + trusted contact = 2 of 3.
+- Only the escrow path (Path B) and the card stop working, which is acceptable.
+
+## EVM-only?
+
+ERC-4337 only exists on EVM chains (Ethereum, Base, Arbitrum, ...). For Bitcoin, the same model can be built natively with Miniscript: a primary key plus time-locked recovery keys (as used by the Liana wallet). The prototype focuses on EVM + USDC.
+
+## Open decision: the escrow path and the custody grey zone
+
+The legal primer says: if Swissquote can move funds **on its own**, it is custody. In Path B (inactivity recovery), Swissquote can rotate the owner key alone after 180 days of inactivity + 30 days time-lock. Even with the delays, a lawyer could argue that this is control by Swissquote.
+
+Options:
+1. **Swissquote + an independent partner** (e.g. a Swiss notary or inheritance partner) must both approve Path B. No single institution can act alone. *(Recommended)*
+2. **Opt-in only:** Path B is off by default; clients who want the inheritance service activate it explicitly.
+3. Combine 1 and 2.
+4. Drop Path B and keep only guardian recovery.
+
+Team decision: _TBD_
+
 ## Why this model (vs. the alternatives)
 
 | Option | Why not (as the main model) |

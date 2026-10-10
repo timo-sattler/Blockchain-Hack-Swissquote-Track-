@@ -10,6 +10,7 @@ Recovery always means **rotating the owner key** to a new passkey. It never move
 | Lost phone, no backup device | Guardian recovery: Swissquote (after KYC) + trusted contact | Path A |
 | Stolen phone | Phone is biometric-locked, so the thief can't sign. User starts guardian recovery to rotate the key | Path A |
 | Phone **and** email/SIM compromised | Attacker can't recover without 2 guardians. If they start a recovery, the user cancels | Path A (defense) |
+| **Swissquote is permanently gone** | Recover with backup passkey + trusted contact (2 of 3) through any Safe/4337 interface. The owner passkey keeps working anyway | Path A without Swissquote |
 | User lost everything and is unreachable for months; death / inheritance | Swissquote verifies the client or heirs (KYC), starts escrow recovery | Path B |
 
 ## Which path applies?

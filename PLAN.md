@@ -93,30 +93,49 @@ A and E should spend 30 minutes together Saturday afternoon so the custody and t
 
 Tick these off before Sunday's feature freeze. The judges will look for each one by name.
 
-### Must-haves
-| Requirement from the brief | How we show it | Role |
-|----------------------------|----------------|------|
-| Full lifecycle: create → authenticate → sign → loss of access → recovery | One continuous live demo + backup video | A, B, C |
-| **Real transaction** on a blockchain (testnet OK) | Tx hash + BaseScan link on screen | B, D |
-| Clear, **defended** custody model | `custody-model.md`: decision + comparison table vs. MPC / seed phrase / Shamir | A, E |
-| Where keys / key shares live | Key table: passkey in device secure enclave, guardian keys, Swissquote's recovery-only role (can't move funds) | A, E |
-| Secure authentication **before** signing | Passkey biometric prompt on every send (WebAuthn `userVerification: "required"`) | B |
-| Credible threat model | `threat-model.md` table, including a **malicious Swissquote insider** | E |
-| Wallet architecture | Diagram in `architecture.md` with real vs. mocked labels | D, E |
-| Recovery that **doesn't give Swissquote control** | Swissquote = 1 of N guardians, never enough alone; time-lock + cancel | A |
-| Established crypto libraries, no own crypto | List the libraries in `architecture.md` (Safe/ZeroDev, viem, WebAuthn) | A |
-| Mocks **clearly documented** | `backend/*/README.md` + "MOCK" badge in the UI | C |
+### Demo story (required)
+**create a wallet → log in and sign a transaction → lose the wallet or its keys → recover access**, with a real transaction on testnet (tx hash + BaseScan link on screen). Roles A, B, C.
 
-### Bonus (in priority order)
+### The six required topics
+| # | Topic | What we show | Where | Role |
+|---|-------|--------------|-------|------|
+| 1 | **Custody model + threat model** | Decision with pros/cons. Answer the three questions explicitly: who could **steal** funds, who could **lock the client out**, could Swissquote **alone or with a partner** move funds? | `custody-model.md`, `threat-model.md` | A, E |
+| 2 | **Architecture** | Diagram: client app, backend services, key storage, contracts, chain, with **real vs. mocked** marked | `architecture.md` | D, E |
+| 3 | **Wallet creation** | Passkey generated in the device secure enclave → smart account deployed → **linked to the Swissquote identity** (client logs into the mocked Swissquote account, wallet signs an ownership proof) | `app/`, `custody-model.md` | B, C |
+| 4 | **Authentication** | Passkey + biometrics before every signature. **Small vs. high-value transaction must differ** (e.g. above CHF 1,000: second factor or delay). Now **required**, not just a bonus | `app/`, `contracts/` | B |
+| 5 | **Recovery** | Lost / stolen / destroyed device. Who is involved, how long it takes, what stops an attacker. **Also: how the client gets funds back if Swissquote is permanently gone.** Bonus credit: demo shows recovery **refusing an attacker with stolen phone + email** | `recovery.md` | A, C |
+| 6 | **Business case** | One concrete paragraph: revenue, assets kept in the ecosystem, new clients, lower costs | `business-case.md` | E |
+
+### Technical constraints
+- [ ] No homemade crypto: only established libraries (Safe / ERC-4337 tooling / WebAuthn). Homemade crypto is **penalised**.
+- [ ] Every mock is labelled in the **demo and README**.
+- [ ] **The mocked Swissquote guardian runs as a separate process with its own key storage.** The client app never holds the guardian key. (Explicit rule in the brief.)
+
+### Legal (15 points, from the legal primer)
+- [ ] State clearly: **custody or software?** Swissquote can't move funds alone → closer to software.
+- [ ] Argue the **grey zone**: Swissquote + a partner together (our guardian recovery, the escrow path). See open decision in `custody-model.md`.
+- [ ] **Travel Rule / ownership proof:** wallet signs an ownership proof at creation (EIP-1271), so transfers between the Swissquote account and the wallet are verified automatically.
+- [ ] Answer: when the client pays a third party from the wallet, **is Swissquote the sending institution?** (Our answer: no, it's a self-hosted wallet; Swissquote isn't an intermediary in that transfer. Exception to discuss: the optional card.)
+
+### Bonus (max. 10 points each, only if the demo story works)
 | Bonus | Cheapest credible version | Role |
 |-------|---------------------------|------|
-| **Recovery that tells the real user from an attacker with the phone or email** | Recovery needs factors a phone/email compromise doesn't give: Swissquote KYC re-check (bank login + 2FA / video ident, mocked) + backup passkey or trusted contact. Then a time-lock with alerts on every channel; the old key can cancel. Email/SMS alone never count. Explain it as an attack-by-attack table | A, C, E |
-| **Gasless USDC transfer** | Paymaster sponsors the UserOp (or ERC-20 paymaster: gas paid in USDC). Demo: brand-new account with 0 ETH sends USDC | D |
-| **Transaction simulation** | Simulate before signing and show "you will send X USDC to Y" + balance change | B, D |
-| **Approved dApp list / sanctions screening** | Mock compliance API: allowlist + sanctioned-address list; sending to a "sanctioned" address is blocked live in the demo | D |
-| **High-value checks** | Above e.g. CHF 1,000 → extra confirmation (second passkey or delay) | B |
-| **Wallet ownership verification (Swiss)** | Smart account signs a message (EIP-1271) to prove ownership to Swissquote, which banks need for transfers to/from self-hosted wallets (FINMA travel-rule guidance; check the exact reference) | D, E |
-| **Optional: Swissquote card** | Daily USDC spending limit in a contract + mock card terminal: one payment approved, one declined, then freeze. See `docs/card-payments.md` | D (contract), C (mock UI) |
-| **Strong business case** | Numbers slide: retaining clients who would otherwise withdraw, revenue from swaps/ramps/premium recovery, lower support cost | E |
+| **Gasless transactions** | Paymaster sponsors USDC transfers. Explain **who pays** (Swissquote, as a client benefit / cost of acquisition) and **how abuse is prevented** (only verified wallets, rate limits, only allowlisted calls such as USDC transfers, or gas paid in USDC) | D |
+| **Compliant dApp interaction** | Approved dApp list + sanctions screening (mock) + **simulation in plain language before signing** ("You send 20 USDC to Alice, balance after: 80 USDC") + extra checks above a threshold | B, D |
+| *Optional: Swissquote card* | Not scored as a bonus. Only for the business case / pitch. See `docs/card-payments.md` | C, D |
 
-**Demo moment worth planning for:** attacker steals phone + email → starts recovery → real user gets the alert → cancels. That single scene covers custody, threat model and the recovery bonus.
+### Submission text must include
+- [ ] Custody model decision and threat model
+- [ ] Architecture diagram with mocked parts marked
+- [ ] Custody and Travel Rule handling
+- [ ] How Swissquote makes money / what it gains
+- [ ] Which bonus topics we tackled
+- [ ] **Which AI tools we used, and what for** (keep a running list in `pitch/ai-tools.md`)
+
+### Questions the judges will likely ask (prepare answers)
+- **"ERC-4337 is EVM-only, what about Bitcoin?"** → Same design maps to Bitcoin natively with Miniscript: primary key + time-locked recovery keys (as in Liana wallet). Prototype focuses on EVM + USDC.
+- **"Who pays gas?"** → Swissquote via paymaster, with abuse limits.
+- **"Can Swissquote + the trusted contact steal funds?"** → They can start a key rotation, but 48 h time-lock + alerts + owner cancel. Discuss honestly as the residual risk.
+- **"What if Swissquote disappears?"** → Owner passkey keeps working on-chain without Swissquote. Recovery via backup passkey + trusted contact (2 of 3) without Swissquote. Account usable from any Safe/4337 interface.
+
+**Demo moment worth planning for:** attacker with phone + email starts recovery → KYC refuses them → real user gets the alert → cancels. That single scene covers custody, threat model and the recovery bonus credit.
