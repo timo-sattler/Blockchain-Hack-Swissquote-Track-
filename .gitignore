@@ -1,0 +1,22 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Foundry / Hardhat
+out/
+cache/
+broadcast/
+artifacts/
+typechain-types/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
