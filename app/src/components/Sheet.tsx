@@ -1,7 +1,11 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { Close } from './icons'
 
-/** Bottom sheet on phones, centered dialog on wider screens. */
+/**
+ * Bottom sheet on phones, centered dialog on wider screens. Rendered into <body> so it covers the
+ * screen even when opened from inside an animated card (a transform there would trap position: fixed).
+ */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
@@ -13,7 +17,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     }
   }, [onClose])
 
-  return (
+  return createPortal(
     <div className="backdrop" onClick={onClose}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
@@ -24,6 +28,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

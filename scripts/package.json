@@ -1,0 +1,12 @@
+{
+  "name": "swissquote-wallet-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "e2e:recovery": "node e2e-recovery.mjs",
+    "live:recovery": "node live-recovery.mjs"
+  },
+  "dependencies": {
+    "viem": "2.57.4"
+  }
+}

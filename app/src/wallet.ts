@@ -23,19 +23,38 @@ import { BUNDLER_URL, chain, PAYMASTER_URL, RPC_URL, USDC } from './config'
 export type SmartAccount = ToCoinbaseSmartAccountReturnType
 export type Token = 'USDC' | 'ETH'
 
-/** Public data of the passkey. The private key never leaves the device's secure element. */
-export type StoredPasskey = { id: string; publicKey: Hex }
+/**
+ * Public data of the passkey. The private key never leaves the device's secure element.
+ * `account` is set after a recovery: the new passkey then controls an existing account
+ * instead of the one its public key would derive.
+ */
+export type StoredPasskey = { id: string; publicKey: Hex; account?: Address }
 
 const PASSKEY_KEY = 'sq-wallet:passkey'
 
-export const publicClient = createPublicClient({ chain, transport: http(RPC_URL) })
+// The public RPC rate-limits hard (HTTP 429). Contract reads made in the same tick are merged into one
+// Multicall3 call, and the remaining requests go out as one JSON-RPC batch.
+export const publicClient = createPublicClient({
+  chain,
+  transport: http(RPC_URL, { batch: { wait: 16 }, retryCount: 4, retryDelay: 400 }),
+  batch: { multicall: { wait: 16 } },
+})
 
 const bundlerClient = createBundlerClient({
   client: publicClient,
   transport: http(BUNDLER_URL),
-  paymaster: PAYMASTER_URL ? createPaymasterClient({ transport: http(PAYMASTER_URL) }) : undefined,
   userOperation: { estimateFeesPerGas: bundlerGasPrice },
 })
+
+// Same bundler, but asks the paymaster to sponsor gas. Null when no paymaster is configured.
+const sponsoredBundlerClient = PAYMASTER_URL
+  ? createBundlerClient({
+      client: publicClient,
+      transport: http(BUNDLER_URL),
+      paymaster: createPaymasterClient({ transport: http(PAYMASTER_URL) }),
+      userOperation: { estimateFeesPerGas: bundlerGasPrice },
+    })
+  : null
 
 // Pimlico rejects UserOperations priced below its own quote, so ask the bundler first.
 async function bundlerGasPrice() {
@@ -69,21 +88,39 @@ export function forgetPasskey() {
   localStorage.removeItem(PASSKEY_KEY)
 }
 
+export function savePasskey(passkey: StoredPasskey) {
+  localStorage.setItem(PASSKEY_KEY, JSON.stringify(passkey))
+}
+
 /** Prompts Face ID / fingerprint and creates a new P-256 passkey on this device. */
 export async function createPasskey(label: string): Promise<StoredPasskey> {
   const credential = await createWebAuthnCredential({ name: label })
-  const passkey = { id: credential.id, publicKey: credential.publicKey }
-  localStorage.setItem(PASSKEY_KEY, JSON.stringify(passkey))
-  return passkey
+  return { id: credential.id, publicKey: credential.publicKey }
 }
 
 /**
  * The smart account address is derived from the passkey's public key, so it is known
  * before the contract exists. It gets deployed with the first transaction.
+ * A recovered passkey signs for an existing account, from the owner slot it was added to.
  */
-export function getAccount(passkey: StoredPasskey): Promise<SmartAccount> {
+export async function getAccount(passkey: StoredPasskey): Promise<SmartAccount> {
   const owner = toWebAuthnAccount({ credential: passkey })
-  return toCoinbaseSmartAccount({ client: publicClient, owners: [owner], version: '1.1' })
+  if (!passkey.account) return toCoinbaseSmartAccount({ client: publicClient, owners: [owner], version: '1.1' })
+
+  const ownerIndex = await findOwnerIndex(passkey.account, passkey.publicKey)
+  if (ownerIndex === null) throw new Error('This passkey is not (yet) an owner of the recovered wallet.')
+  return toCoinbaseSmartAccount({ client: publicClient, owners: [owner], ownerIndex, address: passkey.account, version: '1.1' })
+}
+
+async function findOwnerIndex(address: Address, publicKey: Hex): Promise<number | null> {
+  const next = await publicClient.readContract({ address, abi: ownersAbi, functionName: 'nextOwnerIndex' })
+  const owners = await Promise.all(
+    Array.from({ length: Number(next) }, (_, i) =>
+      publicClient.readContract({ address, abi: ownersAbi, functionName: 'ownerAtIndex', args: [BigInt(i)] }),
+    ),
+  )
+  const index = owners.findIndex((owner) => owner.toLowerCase() === publicKey.toLowerCase())
+  return index === -1 ? null : index
 }
 
 export async function getBalances(address: Address) {
@@ -121,12 +158,50 @@ export async function getOnChainOwners(address: Address): Promise<Hex[] | null> 
   return owners.filter((owner) => owner !== '0x') // removed owners leave an empty slot
 }
 
-/** Builds the call, asks for the passkey signature, submits it to the bundler and waits for inclusion. */
-export async function sendTransfer(
+export type Call = { to: Address; value?: bigint; data?: Hex }
+export type SentCalls = { hash: Hash; blockNumber: bigint; sponsored: boolean }
+
+/**
+ * Asks for gas sponsorship, then for the passkey signature, submits to the bundler and waits for
+ * inclusion. If the paymaster refuses or is unreachable, falls back to paying gas from the wallet's
+ * own ETH, so the wallet keeps working even if Swissquote stops sponsoring.
+ */
+export async function sendCalls(
+  account: SmartAccount,
+  calls: Call[],
+  onSubmitted?: (userOpHash: Hash) => void,
+): Promise<SentCalls> {
+  let prepared = null
+  if (sponsoredBundlerClient) {
+    try {
+      prepared = await sponsoredBundlerClient.prepareUserOperation({ account, calls })
+    } catch (error) {
+      console.warn('Gas sponsorship unavailable, paying gas from the wallet instead.', error)
+    }
+  }
+  const sponsored = prepared !== null
+  prepared ??= await bundlerClient.prepareUserOperation({ account, calls })
+
+  // Sign once and send the exact operation that was prepared (and sponsored).
+  const { account: _, ...userOperation } = prepared
+  const signature = await account.signUserOperation(userOperation)
+  const userOpHash = await bundlerClient.sendUserOperation({
+    ...userOperation,
+    signature,
+    entryPointAddress: account.entryPoint.address,
+  })
+  onSubmitted?.(userOpHash)
+
+  const { success, receipt, reason } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash })
+  if (!success) throw new Error(`Transaction reverted on-chain${reason ? `: ${reason}` : ''}.`)
+  return { hash: receipt.transactionHash, blockNumber: receipt.blockNumber, sponsored }
+}
+
+export function sendTransfer(
   account: SmartAccount,
   { token, to, amount }: { token: Token; to: string; amount: string },
   onSubmitted?: (userOpHash: Hash) => void,
-): Promise<{ hash: Hash; blockNumber: bigint }> {
+): Promise<SentCalls> {
   if (!isAddress(to)) throw new Error('Recipient is not a valid address.')
   const call =
     token === 'ETH'
@@ -135,12 +210,7 @@ export async function sendTransfer(
           to: USDC,
           data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to, parseUnits(amount, 6)] }),
         }
-
-  const userOpHash = await bundlerClient.sendUserOperation({ account, calls: [call] })
-  onSubmitted?.(userOpHash)
-  const { success, receipt, reason } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash })
-  if (!success) throw new Error(`Transaction reverted on-chain${reason ? `: ${reason}` : ''}.`)
-  return { hash: receipt.transactionHash, blockNumber: receipt.blockNumber }
+  return sendCalls(account, [call], onSubmitted)
 }
 
 /** Turns the most common bundler errors into something a user can act on. */

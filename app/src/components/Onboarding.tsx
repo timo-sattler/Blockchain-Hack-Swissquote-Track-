@@ -2,7 +2,15 @@ import { useState } from 'react'
 import { createPasskey, explainError, type StoredPasskey } from '../wallet'
 import { Fingerprint, Shield, Users } from './icons'
 
-export function Onboarding({ clientName, onCreated }: { clientName: string; onCreated: (p: StoredPasskey) => void }) {
+export function Onboarding({
+  clientName,
+  onCreated,
+  onRecover,
+}: {
+  clientName: string
+  onCreated: (p: StoredPasskey) => void
+  onRecover: () => void
+}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
@@ -60,7 +68,7 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
           </span>
           <div>
             <strong>Lose your phone, not your money</strong>
-            <span>Recover with guardians you choose. Coming next.</span>
+            <span>Any 2 of: your recovery kit, Swissquote, a person you trust.</span>
           </div>
         </li>
       </ul>
@@ -70,6 +78,9 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
       </button>
       {error && <p className="error center">{error}</p>}
       <p className="fineprint">Takes about 5 seconds · Base Sepolia testnet</p>
+      <button className="text-btn" onClick={onRecover}>
+        Lost your phone? Recover your wallet
+      </button>
     </section>
   )
 }

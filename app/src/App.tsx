@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { GuardianApp } from './components/GuardianApp'
 import { BankTab } from './sq/BankTab'
 import { CryptoTab } from './sq/CryptoTab'
 import { HomeTab } from './sq/HomeTab'
@@ -30,6 +31,22 @@ function initialTab(): Tab {
 }
 
 export default function App() {
+  const hash = useHash()
+  if (hash.startsWith('#guardian')) return <GuardianApp hash={hash} />
+  return <SwissquoteApp />
+}
+
+function useHash() {
+  const [hash, setHash] = useState(() => window.location.hash)
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash)
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return hash
+}
+
+function SwissquoteApp() {
   const [tab, setTab] = useState<Tab>(initialTab)
   const [toast, setToast] = useState('')
   const toastTimer = useRef<number>(undefined)

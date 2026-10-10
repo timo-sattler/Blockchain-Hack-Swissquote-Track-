@@ -6,6 +6,7 @@ import { getBalances, type SmartAccount, type StoredPasskey } from '../wallet'
 import { AddFundsSheet } from './AddFundsSheet'
 import { Confetti } from './Confetti'
 import { ControlCard } from './ControlCard'
+import { PendingRecoveryAlert } from './PendingRecoveryAlert'
 import { ArrowDown, ArrowUp, Copy, External, Plus } from './icons'
 import { ReceiveSheet } from './ReceiveSheet'
 import { SendSheet } from './SendSheet'
@@ -74,6 +75,8 @@ export function WalletHome({
         </div>
       )}
 
+      <PendingRecoveryAlert account={account} onCancelled={() => setRefreshKey((k) => k + 1)} />
+
       <section className="balance-card">
         <div className="balance-top">
           <span className="network">
@@ -126,7 +129,12 @@ export function WalletHome({
         </button>
       )}
 
-      <ControlCard address={account.address} passkeyPublicKey={passkey.publicKey} refreshKey={refreshKey} />
+      <ControlCard
+        account={account}
+        passkeyPublicKey={passkey.publicKey}
+        refreshKey={refreshKey}
+        onChanged={() => setRefreshKey((k) => k + 1)}
+      />
 
       <section className="card">
         <div className="card-head">

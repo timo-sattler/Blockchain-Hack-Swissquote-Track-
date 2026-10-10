@@ -1,0 +1,11 @@
+{
+  "name": "swissquote-guardian-mock",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "viem": "2.57.4"
+  }
+}

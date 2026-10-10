@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import type { Address } from 'viem'
 import { Onboarding } from '../components/Onboarding'
+import { RecoverFlow } from '../components/RecoverFlow'
 import { Sheet } from '../components/Sheet'
 import { Spinner } from '../components/icons'
 import { WalletHome } from '../components/WalletHome'
-import { forgetPasskey, getAccount, loadPasskey, type SmartAccount, type StoredPasskey } from '../wallet'
+import { explainError, forgetPasskey, getAccount, loadPasskey, savePasskey, type SmartAccount, type StoredPasskey } from '../wallet'
 import { CLIENT, CUSTODIED_CRYPTO, formatChf } from './mockData'
 import { SqHeader } from './SqHeader'
 
@@ -13,10 +14,13 @@ export function CryptoTab({ onToast }: { onToast: (message: string) => void }) {
   const [account, setAccount] = useState<SmartAccount | null>(null)
   const [justCreated, setJustCreated] = useState(false)
   const [moving, setMoving] = useState(false)
+  const [recovering, setRecovering] = useState(false)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
+    setLoadError('')
     if (!passkey) return setAccount(null)
-    getAccount(passkey).then(setAccount)
+    getAccount(passkey).then(setAccount, (e) => setLoadError(explainError(e)))
   }, [passkey])
 
   const custodiedTotal = CUSTODIED_CRYPTO.reduce((sum, coin) => sum + coin.valueChf, 0)
@@ -63,16 +67,30 @@ export function CryptoTab({ onToast }: { onToast: (message: string) => void }) {
       <p className="sq-section-sub">Your keys, on your phone. Swissquote cannot move these funds.</p>
 
       <div className="sq-wallet">
-        {!passkey && (
+        {!passkey && !recovering && (
           <Onboarding
             clientName={CLIENT.name}
             onCreated={(created) => {
+              savePasskey(created)
               setJustCreated(true)
               setPasskey(created)
             }}
+            onRecover={() => setRecovering(true)}
           />
         )}
-        {passkey && !account && (
+        {!passkey && recovering && (
+          <RecoverFlow
+            onRecovered={(recovered) => {
+              setRecovering(false)
+              setJustCreated(false)
+              setPasskey(recovered)
+              onToast('Wallet recovered to this phone')
+            }}
+            onCancel={() => setRecovering(false)}
+          />
+        )}
+        {passkey && loadError && <p className="error center">{loadError}</p>}
+        {passkey && !account && !loadError && (
           <div className="loading">
             <Spinner /> Loading your wallet…
           </div>

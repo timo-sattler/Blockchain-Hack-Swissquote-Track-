@@ -1272,3 +1272,273 @@ button.option:active {
     transition: none !important;
   }
 }
+
+/* ---------- Recovery ---------- */
+
+/* Beats .pill.soon so an actionable pill reads as a button, not a label. */
+.control-list button.pill {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 7px 14px;
+  box-shadow: 0 4px 12px rgba(227, 6, 19, 0.25);
+}
+
+.setup,
+.recover {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.recover {
+  padding: 8px 0;
+  animation: rise 0.4s ease both;
+}
+
+.setup h3,
+.recover h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup .pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lead.left {
+  text-align: left;
+  max-width: none;
+  margin: 0;
+}
+
+.guardian-list,
+.approvals {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guardian-list li,
+.approvals li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.approvals li.done {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.guardian-list div,
+.approval-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.guardian-list span:not(.control-icon) {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.approval-body .pill {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.setup .field input,
+.code-input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  resize: vertical;
+  outline: none;
+}
+
+.setup .field input:focus,
+.code-input:focus {
+  border-color: var(--accent);
+}
+
+.code-box {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.checkbox input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.chip.danger {
+  color: var(--error);
+}
+
+label.chip {
+  cursor: pointer;
+}
+
+.refusal {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.steps {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.steps li {
+  width: 22px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.steps li.done {
+  background: var(--ok);
+}
+
+.steps li.active {
+  background: var(--accent);
+}
+
+.countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.countdown h2 {
+  margin: 0;
+}
+
+.countdown-time {
+  margin: 0;
+  font-size: 56px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -1px;
+}
+
+.alert {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.alert.warn {
+  background: var(--warn-soft);
+}
+
+.alert.danger {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+}
+
+.alert.big {
+  gap: 8px;
+  padding: 16px;
+  margin-bottom: 14px;
+  font-size: 14px;
+}
+
+.alert.big strong {
+  font-size: 16px;
+}
+
+.guardian-app {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.guardian-app .card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.guardian-app h2 {
+  margin: 0;
+}
+
+.guardian-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.guardian-head div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.guardian-head span:not(.control-icon) {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.muted.small {
+  font-size: 12.5px;
+}

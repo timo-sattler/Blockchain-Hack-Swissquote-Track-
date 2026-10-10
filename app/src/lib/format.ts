@@ -14,3 +14,9 @@ export function timeAgo(timestamp: number) {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`
   return new Date(timestamp).toLocaleDateString()
 }
+
+export function formatDuration(seconds: number) {
+  if (seconds < 120) return `${seconds} s`
+  if (seconds < 7200) return `${Math.round(seconds / 60)} min`
+  return `${Math.round(seconds / 3600)} h`
+}
