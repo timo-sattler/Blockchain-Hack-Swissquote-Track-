@@ -90,3 +90,16 @@ The passkey's public key and credential id are kept in `localStorage` so the app
 - `src/sq/`: mocked Swissquote tabs (Home, Trade, Bank, Plan) and the Crypto tab
 - `src/components/`: onboarding, wallet home, send / receive / add-funds sheets, control card, icons
 - `src/lib/`: formatting and per-wallet activity history
+
+## Live presentation (`/present`)
+
+A slide deck for the pitch that also proves the system works: the architecture slide lights up and an activity feed fills as wallets are created and payments are signed.
+
+- Open `http://localhost:5173/present.html` (dev) or `https://<project>.vercel.app/present` (deployed).
+- **Keys:** → / Space / PageDown next, ← / PageUp back, `f` full screen, `s` play a simulated run, `c` clear the feed. Presenter clickers work.
+- **Live data comes from two sources:**
+  - the share service's server-sent events at `VITE_EVENTS_URL` (badge **LIVE**);
+  - transfers read straight from Base Sepolia and the Bitcoin testnet for the wallet that was created, or for `?evm=0x…&btc=tb1…` in the URL (badge **ON-CHAIN**).
+- The simulated run (key `s`) is for rehearsals and as a fallback; every simulated entry is marked **SIMULATED**.
+
+**Event format for the share service:** one JSON object per SSE `data:` line, as defined by `WalletEvent` in `src/present/live.ts`, e.g. `{"type":"signing","parties":["A","B"]}` or `{"type":"tx_broadcast","chain":"bitcoin","hash":"…","amount":"0.0005","asset":"BTC"}`. Party A = phone, B = Swissquote, C = recovery kit.
