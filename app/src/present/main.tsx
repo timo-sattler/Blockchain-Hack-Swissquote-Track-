@@ -1,6 +1,7 @@
 import QRCode from 'qrcode'
 import { StrictMode, useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
+import { HUB_URL } from '../config'
 import { Feed } from './Feed'
 import { useLiveData } from './live'
 import { NetworkGraph } from './NetworkGraph'
@@ -9,7 +10,7 @@ import './present.css'
 /** One live page that shows everything: wallets, who holds which key share, payments, and the services' health. */
 function Dashboard() {
   const { items, status, shareOnline, members, treasury, reset } = useLiveData()
-  const appUrl = `${window.location.origin}/`
+  const appUrl = usePublicUrl()
 
   return (
     <div className="dash">
@@ -63,7 +64,22 @@ function Dashboard() {
   )
 }
 
+/** The address phones should open: the hub's PUBLIC_URL (tunnel) if set, else this page's origin. */
+function usePublicUrl() {
+  const [url, setUrl] = useState(`${window.location.origin}/`)
+  useEffect(() => {
+    fetch(`${HUB_URL}/config`)
+      .then((r) => r.json() as Promise<{ publicUrl: string }>)
+      .then(({ publicUrl }) => {
+        if (publicUrl) setUrl(publicUrl.endsWith('/') ? publicUrl : `${publicUrl}/`)
+      })
+      .catch(() => {})
+  }, [])
+  return url
+}
+
 function JoinLink({ url }: { url: string }) {
+  const local = /localhost|127\.0\.0\.1/.test(url)
   const [qr, setQr] = useState('')
   useEffect(() => {
     QRCode.toDataURL(url, { width: 220, margin: 1, color: { dark: '#161a24', light: '#ffffff' } }).then(setQr)
@@ -74,6 +90,7 @@ function JoinLink({ url }: { url: string }) {
       <span>
         <strong>Create your wallet</strong>
         <code>{url.replace(/^https?:\/\//, '').replace(/\/$/, '')}</code>
+        {local && <em className="join-warning">Only works on this computer: start the tunnel for phones</em>}
       </span>
     </a>
   )

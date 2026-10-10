@@ -192,6 +192,12 @@ p {
   color: var(--accent);
 }
 
+.join-warning {
+  font-size: 12px;
+  font-style: normal;
+  color: var(--bad);
+}
+
 .join-link code {
   font-size: 13px;
   color: var(--muted);

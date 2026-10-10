@@ -28,6 +28,8 @@ Environment variables:
 | `SHARE_PORT`, `HUB_PORT` | `8790`, `8787` | |
 | `HUB_URL`, `SHARE_URL` | `http://localhost:8787`, `http://localhost:8790` | How the two processes find each other |
 | `DATA_DIR` | `services/data/share-service` | Share service storage |
+| `PUBLIC_URL` (hub) | – | Public address of the demo (e.g. the Cloudflare tunnel). The dashboard's QR code uses it, so phones can join even when the dashboard runs on localhost. |
+| `PAIRING_DELAY_SEC` | `10` | Safety delay before a new device (passkey + kit) gets its share. Production would be ~24 h. |
 
 Reset the presentation feed: `curl -X POST http://localhost:8787/reset`.
 

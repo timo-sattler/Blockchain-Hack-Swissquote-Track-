@@ -5,6 +5,9 @@ import { createServer } from 'node:http'
 const PORT = Number(process.env.HUB_PORT ?? 8787)
 const SHARE_URL = process.env.SHARE_URL ?? 'http://localhost:8790'
 const HISTORY_LIMIT = 100
+// Public address of the demo (e.g. the Cloudflare tunnel), so the dashboard's QR code works on phones
+// even when the dashboard itself is opened on localhost.
+const PUBLIC_URL = process.env.PUBLIC_URL ?? ''
 
 const TYPES = new Set([
   'wallet_created',
@@ -116,6 +119,11 @@ const server = createServer(async (req, res) => {
     resetAt = Date.now()
     for (const client of clients) client.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history, resetAt })}\n\n`)
     return res.writeHead(204).end()
+  }
+
+  if (req.method === 'GET' && url.pathname === '/config') {
+    res.writeHead(200, { 'content-type': 'application/json' })
+    return res.end(JSON.stringify({ publicUrl: PUBLIC_URL }))
   }
 
   if (req.method === 'GET' && url.pathname === '/health') return res.writeHead(200).end('ok')
