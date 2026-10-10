@@ -43,7 +43,7 @@ function Triangle() {
       <g className="tri-node a">
         <circle cx="110" cy="130" r="62" />
         <text x="110" y="124" className="tri-letter">A</text>
-        <text x="110" y="152" className="tri-name">Your phone</text>
+        <text x="110" y="152" className="tri-name">Phone / laptop</text>
       </g>
       <g className="tri-node b">
         <circle cx="530" cy="130" r="62" />
@@ -53,7 +53,7 @@ function Triangle() {
       <g className="tri-node c">
         <circle cx="320" cy="440" r="62" />
         <text x="320" y="434" className="tri-letter">C</text>
-        <text x="320" y="462" className="tri-name">Recovery kit</text>
+        <text x="320" y="462" className="tri-name">USB kit</text>
       </g>
       <text x="320" y="532" className="tri-caption">Any two sign. No corner alone can do anything.</text>
     </svg>
@@ -120,13 +120,17 @@ export const SLIDES: Slide[] = [
           <Triangle />
           <ul className="points">
             <li>
-              <b className="dot a" /> <strong>Phone (A)</strong>: Face ID unlocks it. Used for every payment.
+              <b className="dot a" /> <strong>Phone or laptop (A)</strong>: Face ID / Touch ID unlocks it. Used for every payment.
             </li>
             <li>
               <b className="dot b" /> <strong>Swissquote (B)</strong>: co-signs and checks, never alone.
             </li>
             <li>
-              <b className="dot c" /> <strong>Recovery kit (C)</strong>: the client's own encrypted backup, or a relative.
+              <b className="dot c" /> <strong>Recovery kit (C)</strong>: the client's encrypted backup on a USB stick. Trusted friends can hold a password-locked copy.
+            </li>
+            <li className="highlight">
+              <strong>Safer and free through Swissquote:</strong> it blocks malicious addresses and pays the USDC network fee, but it can
+              never block you from your own money.
             </li>
             <li className="highlight">
               <strong>One key for every coin.</strong> The signature is plain ECDSA, so the same wallet works on Bitcoin and every
@@ -214,19 +218,19 @@ export const SLIDES: Slide[] = [
           <div>
             <h2>Who could steal funds?</h2>
             <p>
-              Only someone with two shares: the phone share (locked behind Face ID) plus the kit, or a recovery that passes re-KYC and a
-              48 h delay with alerts to every device.
+              Only someone with two shares: the device share (locked behind Face ID) plus the USB kit and its password, or a recovery that
+              passes re-KYC and a 48 h delay with alerts to every device.
             </p>
           </div>
           <div>
             <h2>Who could lock the client out?</h2>
-            <p>Nobody. If Swissquote refuses or disappears, phone + kit sign without it.</p>
+            <p>Nobody. Swissquote co-signs by default, for screening and free fees, but it is never a gatekeeper: device + USB kit sign without it, also if Swissquote disappears.</p>
           </div>
           <div>
             <h2>Could Swissquote move funds?</h2>
             <p>
-              <strong>Alone: no</strong>, it holds 1 of 3 shares. <strong>With a partner:</strong> only if the client picked a relative
-              as guardian; the delay and alerts are the safeguard. By default the client holds the kit, so no partner exists.
+              <strong>Alone: no</strong>, it holds 1 of 3 shares. <strong>With a partner: no.</strong> Friends' backup pieces are useless
+              without the client's password, and the escrow agent holds a copy of the same share B, not a second one.
             </p>
           </div>
         </div>
@@ -297,12 +301,12 @@ export const SLIDES: Slide[] = [
             <h2>Bonus topics</h2>
             <ul className="bullets">
               <li>
-                <strong>Gasless:</strong> on EVM via EIP-7702 + paymaster. Swissquote sponsors verified wallets, with rate limits and only
-                stablecoin transfers.
+                <strong>Gasless (built):</strong> USDC sent through Swissquote is free. The client signs an authorization (EIP-3009),
+                Swissquote submits it and pays the fee, with a daily limit per wallet.
               </li>
               <li>
-                <strong>Compliant dApps:</strong> the co-signer screens sanctions, simulates the transaction in plain language and asks
-                for extra confirmation above CHF 1,000.
+                <strong>Compliance (built):</strong> Swissquote blocks payments to sanctioned or scam addresses before anything is signed
+                (mock list) and asks for an extra confirmation above 1,000 USDC.
               </li>
             </ul>
           </div>

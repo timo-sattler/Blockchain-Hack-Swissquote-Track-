@@ -17,6 +17,16 @@ const TYPES = new Set([
   'recovery_completed',
   'device_paired',
   'funded',
+  'recovery_cancelled',
+  'replaced_device_refused',
+  'kit_replaced',
+  'escrow_deposited',
+  'escrow_released',
+  'escrow_refused',
+  'inbox_registered',
+  'backup_onchain',
+  'piece_returned',
+  'payment_blocked',
 ])
 
 const clients = new Set()

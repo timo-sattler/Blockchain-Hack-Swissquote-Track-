@@ -3,7 +3,19 @@
 // passkey (WebAuthn PRF) or keeps it in the platform keychain.
 import { fromB64, toB64 } from './bytes'
 
-export type PhoneWallet = { walletId: string; name?: string; share: Uint8Array; publicKey: Uint8Array; btcAddress: string; evmAddress: string }
+// `epoch` is the share generation this phone holds; Swissquote bumps it whenever recovery or pairing
+// issues new shares, which is how a replaced phone finds out.
+// `independent`: recovered through the escrow agent after Swissquote disappeared; the phone signs with the kit.
+export type PhoneWallet = {
+  walletId: string
+  name?: string
+  share: Uint8Array
+  publicKey: Uint8Array
+  btcAddress: string
+  evmAddress: string
+  epoch?: number
+  independent?: boolean
+}
 
 const KEY = 'sq-mpc:wallet'
 

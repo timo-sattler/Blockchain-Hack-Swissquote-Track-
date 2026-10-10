@@ -14,12 +14,22 @@ export type Chain = 'bitcoin' | 'base'
 export type WalletEvent =
   | { type: 'wallet_created'; btcAddress: string; evmAddress: string; name?: string }
   | { type: 'signing'; parties: Party[] }
-  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string; from?: string; to?: string }
+  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string; from?: string; to?: string; sponsored?: boolean }
   | { type: 'service_offline' }
   | { type: 'service_online' }
   | { type: 'recovery_requested'; by: 'client' | 'attacker' }
   | { type: 'recovery_refused'; reason: string }
   | { type: 'recovery_completed' }
+  | { type: 'recovery_cancelled'; name?: string }
+  | { type: 'replaced_device_refused'; name?: string }
+  | { type: 'kit_replaced'; name?: string }
+  | { type: 'inbox_registered'; name?: string; hash: string }
+  | { type: 'backup_onchain'; name?: string; friends: number; hash: string }
+  | { type: 'piece_returned'; name?: string; hash: string }
+  | { type: 'payment_blocked'; name?: string; to: string; reason: string }
+  | { type: 'escrow_deposited'; name?: string }
+  | { type: 'escrow_released'; name?: string }
+  | { type: 'escrow_refused'; reason: string }
   | { type: 'device_paired'; name?: string }
   | { type: 'funded'; name?: string; to: string; usdc: string; eth: string; hash: string }
 

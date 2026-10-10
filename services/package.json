@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "hub": "node hub.mjs",
-    "share": "node share-service.mjs"
+    "share": "node share-service.mjs",
+    "escrow": "node escrow-agent.mjs"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

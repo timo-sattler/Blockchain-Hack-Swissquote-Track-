@@ -1,65 +1,65 @@
 # Why the wallet is secure
 
-The security rests on one principle: **there is no single point where an attacker gets everything.** Each layer protects on its own, and an attacker would have to break several of them at the same time.
+The security rests on one principle: **there is no single place where an attacker gets everything.** The key is split into three shares, two are needed, and each share is protected differently. Throughout this document, **Anna** is our example Swissquote client. Terms: [`handbook.md`](handbook.md). Attacker-by-attacker detail: [`threat-model.md`](threat-model.md).
 
-Throughout this document, **Anna** is our example Swissquote client.
+## Layer 1: The key never exists in one piece
 
-## Layer 1: The key never leaves the phone
+Anna's key is created directly as three shares: one on her phone (A), one at Swissquote (B), one in her recovery kit (C). The full key is never assembled, not when the wallet is created, not when she pays, not during a recovery. Signing is a short conversation between two share holders that produces a normal signature without either side learning the other's share.
 
-The passkey's private key is created inside the phone's **secure chip** (Secure Enclave on iPhone, Titan/StrongBox on Android). Apple and Google built this chip for exactly this purpose: it never hands out the key, not to apps, not to the operating system, not to us. It can only be asked to "sign this", and it does so only after Face ID or a fingerprint.
+**Result:** stealing one share, from any one place, is worthless.
 
-**Result:** Even malware on the phone cannot copy the key. A seed phrase written on paper, by contrast, can be photographed.
+## Layer 2: Each share is guarded by something different
 
-## Layer 2: Passkeys are immune to phishing
+| Share | Guarded by |
+|---|---|
+| A (phone) | Phone lock; every use with Swissquote needs Anna's passkey (Face ID). Prototype: stored in browser storage; production: encrypted with a passkey-derived key |
+| B (Swissquote) | Swissquote's servers (production: HSM, dual control); only used after a valid passkey login from Anna |
+| C (kit) | A password only Anna knows; 310 000 rounds of key stretching make every guess slow |
 
-A passkey is bound to the **domain** it was created on, e.g. `wallet.swissquote.ch`. A scam site such as `swissquote-wallet-support.com` cannot even request it; the browser blocks it.
+**Result:** an attacker needs two different kinds of access at once, for example Anna's phone **and** her kit file **and** its password.
 
-**Result:** The most common way crypto gets stolen ("enter your 24 words here") is technically impossible. There is nothing to type in.
+## Layer 3: Passkeys cannot be phished
 
-## Layer 3: The blockchain verifies every signature mathematically
+Anna confirms with Face ID instead of a password or seed words. A passkey only works on the website it was created for: a fake site cannot ask for it, and there are no words she could be tricked into typing.
 
-Every transfer is signed, and the signature covers the **exact content**: amount, recipient, nonce. The smart account on the blockchain checks it before doing anything.
+## Layer 4: Swissquote checks what it signs, and Anna checks Swissquote
 
-- Without Anna's key, nobody can forge a valid signature. This rests on the same mathematics that protects online banking and HTTPS.
-- If anyone changes even a single digit on the way, for example the recipient, the signature becomes invalid and the contract rejects it.
+Before co-signing, Swissquote decodes the payment itself (amount, recipient, chain), screens the recipient against a sanctions list and asks for an extra confirmation above 1 000 USDC. It then signs **its own** fingerprint (hash) of the payment. Anna's phone computes the same fingerprint and aborts if they differ.
 
-**Result:** The bundler, the paymaster, Swissquote and we as developers **cannot move funds**. A bundler can at most refuse a transaction, and then another bundler is used.
+**Result:** a compromised phone cannot make Swissquote sign something else, and a compromised Swissquote cannot make the phone sign something else.
 
-## Layer 4: The rules are public and cannot be changed in secret
+## Layer 5: Recovery needs Anna's kit, her face and time, and she can say no
 
-Who the owner is and who the guardians are is stored in the contract on the blockchain. Anyone can verify it, and nobody can change it secretly: any change itself requires a valid signature according to the contract's rules.
+To move the wallet to a new phone, someone needs the kit **and** its password, must pass an ID + selfie check, and must wait 48 hours. During that time every device that still holds the wallet shows a red warning with a **Cancel** button that works with Anna's passkey. E-mail and SMS play no role at all.
 
-**Result:** "Swissquote cannot access your funds" is **verifiable**, not a promise in the terms and conditions.
+## Layer 6: A replaced phone is cut off
 
-## Layer 5: Recovery needs two independent factors plus time
+Every recovery re-issues all three shares. Swissquote remembers which generation is current and refuses to co-sign with an older one. The old phone tells its holder it no longer controls the wallet.
 
-Recovery requires 2 of 3 guardians, followed by a 48-hour waiting period, a warning to all of Anna's devices, and the option for Anna to cancel. An attacker would need two completely different things at the same time, for example Anna's USB security key **and** Anna's face for the ID check, and then Anna would still have to miss the warning for 48 hours.
+## Layer 7: Swissquote cannot lock Anna's spending
 
-## Layer 6: Limits cap the damage
-
-High-value transfers require Swissquote's compliance check or a 48-hour delay. If an attacker succeeds despite everything, they can only reach small amounts.
+If Swissquote refuses or disappears, Anna signs with phone + kit, two shares, entirely on her device.
 
 ## Walking through the attacks
 
 | Attack | What the attacker has | Why it fails |
 |---|---|---|
-| Stolen phone | The device | No Face ID. Even if unlocked: limits apply, and Anna replaces the key through recovery. |
-| Malware on the phone | Control over apps | Cannot reach the key in the secure chip. Every signature needs Anna's Face ID. |
-| Phishing website | Anna's trust | The passkey does not work on the wrong domain, and there are no words to ask for. |
-| Hijacked email or SIM card | Anna's inbox or phone number | Email and SMS play no role in the system at all. |
-| Hacked Swissquote server | Swissquote's guardian vote | Only 1 of 3 votes. Cannot sign any transfer. |
-| Malicious bundler or paymaster | Anna's transaction in transit | Cannot change it, only refuse it. |
-| Someone reads the public key from the browser | Public data | It can only be used to verify signatures, not to create them. |
+| Stolen, locked phone | The device | No Face ID, no Swissquote co-signature, no kit |
+| Stolen phone + hacked e-mail + SIM swap | Share A, inbox, phone number | Recovery needs the kit, its password and Anna's face; e-mail and SMS are never accepted. Shown live in the demo |
+| Stolen kit file | Encrypted Share C | Password unknown; even with it, one share cannot sign, and a recovery triggers alerts and a 48 h veto window |
+| Hacked Swissquote server | Share B | One share cannot sign, and recovery needs Anna's kit |
+| Tampered Swissquote service | Control of co-signing | The phone compares fingerprints and aborts |
+| Phishing website | Anna's trust | The passkey does not work on the wrong site; nothing to type |
+| Payment to a sanctioned address | Anna's confirmation | Swissquote refuses to co-sign |
+| Thief keeps using the old phone after Anna recovers | Old Share A | Swissquote refuses the outdated share |
 
 ## Where the security ends
 
-We state the limits openly:
-
-- **Anna is talked into it:** she herself confirms a transfer to a scammer. Only warnings, transaction simulation and the high-value limit help here.
-- **Anna's Apple or Google account is hacked**, if the passkey is synced through it.
-- **A bug in the smart contract.** That is why we use audited building blocks and write as little custom contract code as possible.
-- **Prototype status:** layers 1–4 are built today. Recovery (layer 5) and limits (layer 6) are next.
+- **Phone + kit + kit password together** give full control without Swissquote: that is the definition of 2 of 3. The kit must never be stored on the phone, and the password never next to the kit.
+- **Old phone + old kit** still work together offline after a recovery: Anna must delete the old kit (the app tells her); after a theft she can sweep to a new key.
+- **Anna is talked into a payment.** Screening and the high-value confirmation help, but cannot stop every scam.
+- **Prototype status:** Share A is unencrypted in browser storage; the identity check, sanctions list and notifications are mocks (the rules around them are real code).
 
 ## In one sentence (for the pitch)
 
-> To steal Anna's money you need her phone **and** her face. To recover her wallet you need two independent factors **and** 48 hours in which Anna notices nothing. And Swissquote can do none of this alone.
+> To steal Anna's money you need two of three very different things: her phone, her kit with its password, or Swissquote's share. Swissquote alone can do nothing, an attacker with her phone and e-mail is refused, and if someone does try to take over, Anna gets 48 hours and a Cancel button.

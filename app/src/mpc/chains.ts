@@ -4,12 +4,14 @@ import { p2wpkh, SigHash, TEST_NETWORK, Transaction } from '@scure/btc-signer'
 import {
   encodeFunctionData,
   erc20Abi,
+  hashTypedData,
   isAddress,
   keccak256,
   parseEther,
   parseTransaction,
   parseUnits,
   recoverAddress,
+  serializeSignature,
   serializeTransaction,
   toHex,
   type Address,
@@ -65,6 +67,52 @@ export async function buildEvmTx(from: Address, asset: 'USDC' | 'ETH', to: strin
 }
 
 export const evmHash = (unsignedTx: Hex) => keccak256(unsignedTx)
+
+// ---------- Gasless USDC (EIP-3009 transferWithAuthorization, relayed by Swissquote) ----------
+
+export type UsdcAuthorization = { to: Address; value: string; validAfter: string; validBefore: string; nonce: Hex }
+
+/** "Move this much of my USDC to `to`", valid for 10 minutes, usable exactly once (random nonce). */
+export function buildUsdcAuthorization(to: string, amount: string): UsdcAuthorization {
+  if (!isAddress(to)) throw new Error('Recipient is not a valid 0x address.')
+  const now = Math.floor(Date.now() / 1000)
+  return {
+    to,
+    value: parseUnits(amount, 6).toString(),
+    validAfter: '0',
+    validBefore: String(now + 600),
+    nonce: toHex(crypto.getRandomValues(new Uint8Array(32))),
+  }
+}
+
+/** The same EIP-712 hash Swissquote computes; the phone compares both before co-signing. */
+export function usdcAuthorizationHash(from: Address, auth: UsdcAuthorization): Hex {
+  return hashTypedData({
+    domain: { name: 'USDC', version: '2', chainId: 84532, verifyingContract: USDC },
+    types: {
+      TransferWithAuthorization: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'validAfter', type: 'uint256' },
+        { name: 'validBefore', type: 'uint256' },
+        { name: 'nonce', type: 'bytes32' },
+      ],
+    },
+    primaryType: 'TransferWithAuthorization',
+    message: { from, to: auth.to, value: BigInt(auth.value), validAfter: BigInt(auth.validAfter), validBefore: BigInt(auth.validBefore), nonce: auth.nonce },
+  })
+}
+
+/** Turns the MPC signature (r, s) into a 65-byte Ethereum signature by finding the recovery bit. */
+export async function finishEvmSignature(hash: Hex, sig: Signature, from: Address): Promise<Hex> {
+  const { r, s } = lowS(sig)
+  for (const yParity of [0, 1] as const) {
+    const signature = { r: toHex(r, { size: 32 }), s: toHex(s, { size: 32 }), yParity }
+    if ((await recoverAddress({ hash, signature })).toLowerCase() === from.toLowerCase()) return serializeSignature(signature)
+  }
+  throw new Error('Signature does not match the wallet address.')
+}
 
 export async function sendEvmTx(unsignedTx: Hex, sig: Signature, from: Address): Promise<Hex> {
   const { r, s } = lowS(sig)

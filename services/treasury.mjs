@@ -3,14 +3,35 @@
 // clients' gas (paymaster / sponsoring), not a cash gift.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseEther, parseUnits } from 'viem'
+import { createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseEther, parseSignature, parseUnits } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia } from 'viem/chains'
+import { MAILBOX, mailboxAbi } from './backup-mailbox.mjs'
 
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
 const RPC_URL = process.env.RPC_URL ?? 'https://sepolia.base.org'
 const STARTER_USDC = process.env.STARTER_USDC ?? '20'
 const STARTER_ETH = process.env.STARTER_ETH ?? '0.0005'
+
+const transferWithAuthorizationAbi = [
+  {
+    type: 'function',
+    name: 'transferWithAuthorization',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'from', type: 'address' },
+      { name: 'to', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'validAfter', type: 'uint256' },
+      { name: 'validBefore', type: 'uint256' },
+      { name: 'nonce', type: 'bytes32' },
+      { name: 'v', type: 'uint8' },
+      { name: 'r', type: 'bytes32' },
+      { name: 's', type: 'bytes32' },
+    ],
+    outputs: [],
+  },
+]
 
 export function createTreasury(dataDir, emit) {
   // The key lives in the share service's own storage (git-ignored), or comes from the environment.
@@ -63,10 +84,70 @@ export function createTreasury(dataDir, emit) {
     console.log(`[treasury] funded ${wallet.name}: ${usdcHash ? STARTER_USDC : 0} USDC + ${STARTER_ETH} ETH`)
   }
 
+  // Gasless USDC: submit the client's signed authorization; the treasury pays the network fee.
+  async function relay(message, signature) {
+    const { r, s, v, yParity } = parseSignature(signature)
+    const request = {
+      address: USDC,
+      abi: transferWithAuthorizationAbi,
+      functionName: 'transferWithAuthorization',
+      args: [message.from, message.to, message.value, message.validAfter, message.validBefore, message.nonce, Number(v ?? 27n + BigInt(yParity)), r, s],
+    }
+    // Simulate first: USDC checks the signature before the balance, so a clear revert reason comes back.
+    await publicClient.simulateContract({ account, ...request })
+    const hash = await walletClient.writeContract(request)
+    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    if (receipt.status !== 'success') throw new Error(`Sponsored transfer reverted on-chain: ${hash}`)
+    return hash
+  }
+
+  // On-chain kit backup: the treasury pays the gas, the contract checks the wallet's own signatures.
+  // The public RPC is load-balanced: right after our previous transaction, the next request can reach a
+  // node that has not seen it yet (stale state or nonce). Retry only BEFORE broadcasting: re-sending a
+  // broadcast chunk would store it twice and the backup would never complete.
+  async function mailboxCall(functionName, args, retries = 6) {
+    const request = { address: MAILBOX, abi: mailboxAbi, functionName, args }
+    let hash
+    for (let attempt = 0; !hash; attempt++) {
+      try {
+        await publicClient.simulateContract({ account, ...request }) // a refused call costs nothing
+        hash = await walletClient.writeContract(request)
+      } catch (error) {
+        const fatal = /insufficient funds|exceeds allowance \(0\)|BadSignature|BadInput|AlreadyExists|KitMismatch|TooManyReturns/i.test(String(error?.message))
+        if (fatal || attempt >= retries) throw error
+        console.log(`[treasury] ${functionName}: the RPC node is behind, retrying (${attempt + 1}/${retries})`)
+        await new Promise((resolve) => setTimeout(resolve, 2000))
+      }
+    }
+    const receipt = await publicClient.waitForTransactionReceipt({ hash })
+    if (receipt.status !== 'success') throw new Error(`${functionName} reverted on-chain: ${hash}`)
+    return hash
+  }
+
   // One transaction at a time, so nonces never collide when several people join at once.
   let queue = Promise.resolve()
+  const queued = (task) => {
+    const result = queue.then(task)
+    queue = result.catch(() => {})
+    return result
+  }
   return {
     address: account.address,
+    relayUsdcAuthorization(message, signature) {
+      return queued(() => relay(message, signature))
+    },
+    backup: {
+      registerInboxKey: (owner, key, signature) => queued(() => mailboxCall('registerInboxKey', [owner, key, signature])),
+      // The backup, then its locked kit in chunks; the contract only completes it if the chunks match the signed hash.
+      createBackup: (args, chunks) =>
+        queued(async () => {
+          const create = await mailboxCall('createBackup', args)
+          const uploads = []
+          for (const chunk of chunks) uploads.push(await mailboxCall('uploadKitChunk', [args[1], chunk]))
+          return { create, uploads }
+        }),
+      returnPiece: (requestId, sealedPiece) => queued(() => mailboxCall('returnPiece', [requestId, sealedPiece])),
+    },
     enqueue(wallet) {
       queue = queue.then(() => fund(wallet)).catch((error) => console.error('[treasury] funding failed:', error.shortMessage ?? error.message))
     },

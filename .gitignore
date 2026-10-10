@@ -24,3 +24,6 @@ typechain-types/
 
 # Reference screenshots of the real Swissquote app (may contain personal data)
 pitch/swissquote-app/
+
+# Demo logs (scripts/start-demo.sh)
+.demo-logs/

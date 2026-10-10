@@ -1379,3 +1379,249 @@ input[type='file'] {
     transition: none !important;
   }
 }
+
+/* ---------- Recovery watch (owner veto, replaced phone) ---------- */
+
+.recovery-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.recovery-alert strong {
+  font-size: 16px;
+}
+
+.recovery-alert.locked {
+  background: var(--surface-2);
+  border-color: var(--error);
+}
+
+.actions button:disabled {
+  opacity: 0.4;
+}
+
+.piece-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.piece-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 8px 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.piece-row.done {
+  background: var(--ok-soft);
+  border-color: transparent;
+}
+
+.piece-check {
+  width: 16px;
+  height: 16px;
+  color: var(--ok);
+  vertical-align: -3px;
+}
+
+.piece-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.piece-actions .secondary {
+  width: auto;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.kit-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--warn-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.fee-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+button.pill.action {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button.pill.action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.escrow-status {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* On-chain backup between friends */
+.give-back {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.give-back h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.give-back .given {
+  margin: 0;
+  font-weight: 600;
+  color: var(--ok);
+}
+
+.safety-code {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.address-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 6px 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  text-align: left;
+}
+
+.address-chip code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--error);
+}
+
+.field-hint.ok {
+  color: var(--ok);
+}
+
+.request-link {
+  display: block;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.friends-recovery .piece-actions .secondary {
+  flex: 1;
+  width: auto;
+}
+
+.pieces-back {
+  margin: 0;
+}
+
+.onchain-done {
+  margin-top: 12px;
+}
+
+/* Payment refused by Swissquote's screening */
+.demo-scam {
+  align-self: flex-start;
+  margin-top: -6px;
+  font-size: 13px;
+}
+
+.blocked-view {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.blocked-view h3 {
+  margin: 0;
+  font-size: 22px;
+  color: var(--error);
+}
+
+.blocked-view p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.blocked-view code {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.blocked-badge {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--error);
+}
+
+.blocked-badge svg {
+  width: 36px;
+  height: 36px;
+}

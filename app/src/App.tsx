@@ -21,6 +21,7 @@ const TABS: { id: Tab; label: string; icon: ReactNode }[] = [
 const TAB_KEY = 'sq-app:tab'
 
 function initialTab(): Tab {
+  if (location.hash.startsWith('#give-back=')) return 'crypto' // a friend asks for their backup piece
   try {
     const saved = localStorage.getItem(TAB_KEY) as Tab | null
     return saved && TABS.some((t) => t.id === saved) ? saved : 'home'

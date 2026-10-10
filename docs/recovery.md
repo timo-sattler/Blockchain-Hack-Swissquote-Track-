@@ -1,137 +1,77 @@
 # Recovery
 
-Recovery always means **rotating the owner key** to a new passkey. It never moves funds. Parameters are in [`custody-model.md`](custody-model.md#recovery-parameters).
+Recovery always means **issuing a new phone share (Share A) for the same key**. The public key, the Bitcoin address and the EVM address stay the same, so no funds move and nobody has to be told a new address. Terms: [`handbook.md`](handbook.md).
+
+## Who is involved
+
+| Party | Role in recovery |
+|---|---|
+| Client | Has the recovery kit (Share C) and its password, passes the identity check, creates a passkey on the new phone |
+| Swissquote share service (Share B) | Checks identity (mock), enforces the waiting period, alerts the client, joins the share re-issue |
+| Old phone (if anyone still has it) | Sees a red alert and can **cancel** with its passkey |
+| Trusted people (optional) | Each holds one **kit piece**; any 2 of 3 pieces give back the client's password-locked kit if the client lost it too. Without the client's kit password the pieces are useless, so they cannot perform a recovery themselves, not even together |
+| Friends with an on-chain backup (optional) | Each holds one unlock piece in their Swissquote app, encrypted to their own inbox key; when the client sends a give-back link, they post the piece back on-chain, encrypted to the new phone. Two pieces + the kit password rebuild the kit. Details: [`onchain-backup.md`](onchain-backup.md) |
+| Independent escrow agent (mock notary) | Holds a copy of Share B; steps in for Swissquote **only** if Swissquote is gone |
 
 ## Scenarios
 
-| Scenario | What the user does | Recovery path |
-|----------|--------------------|---------------|
-| Lost / broken phone, has backup passkey | Sign in on the backup device; add a new phone passkey | **None needed** |
-| Lost phone, no backup device | Guardian recovery: Swissquote (after KYC) + trusted contact | Path A |
-| Stolen phone | Phone is biometric-locked, so the thief can't sign. User starts guardian recovery to rotate the key | Path A |
-| Phone **and** email/SIM compromised | Attacker can't recover without 2 guardians. If they start a recovery, the user cancels | Path A (defense) |
-| **Swissquote is permanently gone** | Recover with backup passkey + trusted contact (2 of 3) through any Safe/4337 interface. The owner passkey keeps working anyway | Path A without Swissquote |
-| User lost everything and is unreachable for months; death / inheritance | Swissquote verifies the client or heirs (KYC), starts escrow recovery | Path B |
+| Scenario | What the client does | Time (production) | Swissquote needed? |
+|---|---|---|---|
+| Phone lost or broken | Recovery with kit + identity check | ~10 min of steps + **48 h** waiting period | Yes |
+| Phone stolen | Same; afterwards the stolen phone is locked out | Same | Yes |
+| New phone, old passkey still available (synced passkeys) | **Re-pair**: passkey login + kit issue a new phone share at once | ~1 min | Yes |
+| Swissquote offline or gone, phone available | No recovery needed: phone + kit sign without Swissquote | Instant | **No** |
+| Phone **and** e-mail/SIM compromised | Attacker is refused; client recovers normally | n/a | Yes |
+| Kit lost or stolen, phone fine | **Replace the kit**: Face ID, then phone + Swissquote issue new shares; the old kit stops working | ~1 min | Yes |
+| Phone **and** kit lost | Rebuild the kit from **2 of 3 friend pieces + the kit password** (piece files, or friends giving their pieces back on-chain), then normal recovery | Steps + 48 h | Yes |
+| Phone lost **and** Swissquote gone | **Escrow agent** (after its own identity check) + kit rebuild the phone share; the agent then deletes its copy | Minutes (production: after Swissquote's liquidation is confirmed) | **No** |
 
-## Which path applies?
+## The flow, step by step
 
-```mermaid
-flowchart TD
-  A["User lost access to their phone"] --> B{"Backup passkey<br/>available?"}
-  B -- yes --> C["Sign in on backup device<br/>and add a new passkey<br/>no recovery needed"]
-  B -- no --> D{"Passes Swissquote KYC<br/>and reaches trusted contact?"}
-  D -- yes --> E["Path A: guardian recovery<br/>2 of 3 approvals + 48 h time-lock"]
-  D -- no --> F{"Account inactive<br/>for 180 days?"}
-  F -- no --> G["Keep working on Path A<br/>e.g. reach the trusted contact"]
-  F -- yes --> H["Path B: escrow recovery<br/>Swissquote after KYC + 30-day time-lock"]
-```
+Demo values in brackets.
 
-## Path A: guardian recovery
+1. **Load the kit.** On the new phone: Crypto tab → *Lost your phone and passkey? Recover with your kit* → open the kit file, enter the password. The app decrypts Share C locally.
+2. **Kit possession and identity check.** The kit (C) and Swissquote (B) sign a random, domain-separated recovery challenge; the service verifies the signature before starting recovery. This never sends Share C to the service and cannot sign a payment. ID document + liveness selfie are matched against the KYC profile (**mocked**: "Take selfie as Anna" or "Attacker with Anna's phone + e-mail"). A mismatch is refused with `403` and the client is alerted. A client-supplied matching identity flag without a valid kit proof is also refused.
+3. **Waiting period: 48 h [30 s].** `POST /wallets/:id/recovery/request` records `readyAt`. Every device that still holds the wallet polls `GET /wallets/:id` and shows a red alert within seconds: *Someone is recovering this wallet on a new phone · This is not me · Cancel recovery*.
+4. **Owner veto.** Cancelling needs a fresh passkey login (Face ID) on a device with the current passkey: `POST /wallets/:id/recovery/cancel`. The new phone immediately shows *Recovery cancelled*. The veto remains possible until MPC recovery successfully commits, including after the new phone stages its passkey. Cancelling invalidates an in-progress recovery session.
+5. **Stage a new passkey.** After `readyAt`, the recovering device's private recovery token permits passkey registration (`POST /wallets/:id/passkey/options`, `POST /wallets/:id/passkey`). This stages a pending credential; the old passkey remains active. The token is never included in public wallet status.
+6. **Re-issue the shares.** Kit (C, running on the new phone) and Swissquote (B) run DKLs lost-share recovery. Output: a new Share A for the phone, a new Share B for Swissquote, a new Share C for a new kit. The service checks that the public key did not change (`recovery produced a different key` otherwise), rechecks that the recovery has not been cancelled, then commits the new share, pending passkey and incremented **epoch** together. Old login tokens and pending signing sessions are invalidated.
+7. **Save the new kit.** The app asks for a password and downloads the new kit, and tells the client to delete the old kit file.
+8. **Old phone locked out.** The old phone sees the higher epoch and shows *This phone no longer controls the wallet*; Send is disabled. If it still tries, Swissquote refuses to co-sign: `409 This phone was replaced…`.
 
-1. **Start:** the user sets up a new passkey on a new device. The app creates a recovery request: "replace owner with this new key". The owner is alerted on all channels **as soon as a recovery is proposed**.
-2. **Approvals:** 2 of 3 guardians approve on-chain.
-   - Swissquote approves only after **KYC re-verification**: bank login with existing banking 2FA, plus video ident for higher-value accounts. *(mocked in the demo)*
-   - Trusted contact approves in their own wallet (deep link).
-   - Backup passkey approves, if available.
-3. **Time-lock:** 48 h (demo: 2 min). Notifications go out on **all** channels: push, email, SMS, and the Swissquote app/e-banking.
-4. **Cancel window:** the current owner passkey can cancel with one tap ("This wasn't me").
-5. **Execute:** after the time-lock, anyone can execute. The new passkey becomes owner and the old one is removed.
+## What stops an attacker from using the same process
 
-```mermaid
-sequenceDiagram
-  autonumber
-  actor U as User on new phone
-  participant SQ as Swissquote, Guardian 1
-  participant TC as Trusted contact, Guardian 3
-  participant RM as Recovery module
-  actor OLD as Owner passkey on old device
-  U->>RM: proposeRecovery with new passkey
-  RM-->>OLD: alert on all channels
-  U->>SQ: KYC re-verification, banking 2FA or video ident
-  SQ->>RM: approve
-  TC->>RM: approve
-  Note over RM: 2 of 3 reached, 48 h time-lock starts
-  alt Owner cancels - this was not me
-    OLD->>RM: cancelRecovery
-    Note over RM: recovery aborted
-  else Time-lock expires
-    U->>RM: executeRecovery
-    Note over RM: owner key replaced, funds untouched
-  end
-```
+| Defence | Stops |
+|---|---|
+| Kit file **and** its password are required | Anyone without the client's own backup, including Swissquote itself and anyone with only the phone, e-mail or SIM |
+| Identity check (ID + liveness) | Someone who stole the kit and guessed the password, but is not the client |
+| E-mail and SMS are never a recovery factor | SIM swap and inbox takeover |
+| 48 h waiting period with alerts on every device and channel | Silent takeovers: the real client has two days to notice |
+| Owner veto with the current passkey | Any recovery the client did not start, as long as they still have a device |
+| Share re-issue + epoch check | A stolen phone continuing to sign with Swissquote after the recovery |
+| Every step is published to the event hub | Unnoticed recoveries during the demo; production writes the same events to an audit log |
 
-## Path B: time-delayed escrow (inactivity recovery)
+**Bonus scenario: stolen phone and e-mail.** The attacker cannot even start: no kit, no password, face does not match. The demo shows the refusal live, and the presentation feed shows *Recovery requested with stolen phone + e-mail* followed by *Recovery refused*.
 
-1. **Condition:** no owner activity for 180 days (demo: 5 min). Every owner-signed transaction, or a free "I'm still here" signature, resets the timer.
-2. **Start:** Swissquote, after KYC re-verification of the client (or of the legal heirs with a certificate of inheritance), proposes a new owner key.
-3. **Time-lock:** 30 days (demo: 3 min), with notifications on all channels throughout.
-4. **Cancel:** any owner activity during the time-lock cancels the recovery.
-5. **Execute:** after the time-lock, the new owner key is installed.
+## Recovery without Swissquote
 
-```mermaid
-stateDiagram-v2
-  [*] --> Active
-  Active --> Active: owner transaction or heartbeat resets timer
-  Active --> Inactive: 180 days without owner activity
-  Inactive --> Active: any owner activity
-  Inactive --> Pending: Swissquote starts escrow recovery after KYC
-  Pending --> Active: owner activity cancels the recovery
-  Pending --> Recovered: 30-day time-lock expires
-  Recovered --> [*]
-```
+- **Phone still available:** phone + kit sign every payment without Swissquote (`signWithKit`, two shares on the device). The app offers this automatically when Swissquote does not answer. In the demo, stop the share service with Ctrl+C and send a payment.
+- **Phone lost and Swissquote gone: escrow agent** (`services/escrow-agent.mjs`, mock notary, own process and storage). After every key generation Swissquote deposits a copy of Share B there (production: encrypted to the agent's HSM). The agent never signs payments and never hands Share B out. It steps in for Swissquote in exactly one protocol, the lost-share recovery, and only if:
+  1. Swissquote has been unreachable for `ESCROW_OUTAGE_SEC` (demo 20 s; production: liquidation confirmed),
+  2. the client passes the agent's own identity check (mocked), and
+  3. the client holds a valid kit: the MPC protocol fails without Share C.
 
-This is the "escrow" idea, but restricted: Swissquote can only act alone after a long silence, slowly, publicly, and with a veto for the real owner.
+  Kit + escrow then issue a new phone share and a new kit; same addresses. The agent deletes its copy **after** the protocol succeeded. From then on the client signs with phone + kit; moving the funds to a new provider is recommended.
 
-## Telling the real user apart from an attacker
+## Limits we state openly
 
-The rule: **no single factor that an attacker typically gets (phone, email, SIM, one person) is enough, and the real owner always gets time and a veto.**
+- **Old shares still pair with each other.** After a recovery the old Share A and the old kit still form a valid pair offline. Swissquote cannot revoke an offline pair. Mitigations: the app tells the client to delete the old kit; after a theft, an optional *sweep* moves the funds to a brand-new key, which makes every old share worthless.
+- **Recovery rules live in Swissquote's server.** They are not publicly auditable. Roadmap: an on-chain recovery registry (based on our deployed smart-account `RecoveryModule`) that records requests, friend approvals, the waiting period and vetoes; Swissquote's service would only join recoveries the contract approved.
+- **Friends hold the data, the client holds the secret.** Two pieces only give back the kit locked with the client's password, so two colluding friends get nothing usable unless they also guess the password offline (slowed by PBKDF2, 310,000 rounds: a long password matters). Even then they would still need the identity check, the 48 h waiting period and the owner not cancelling. Pieces from the earlier format that did not need the password are refused.
+- **Pieces and kit copies go stale.** Every recovery or kit replacement issues new shares; older kits and pieces then stop working, and the app asks for new ones.
 
-| Attacker has… | Can they recover? | Why not |
-|---------------|-------------------|---------|
-| Stolen, locked phone | No | Passkey needs biometrics. No guardian approves without the user |
-| Phone + email + SIM (SIM swap) | No | Email/SMS are **not** guardians. Swissquote KYC needs banking 2FA / video ident. Trusted contact must approve too. Even with one approval, the owner sees alerts and cancels |
-| Social-engineered trusted contact | No | That's only 1 of 2 approvals. Swissquote KYC still required. Owner can cancel |
-| Malicious Swissquote insider | No | 1 guardian only in Path A. Path B needs 180 days of inactivity, then a 30-day public time-lock with owner veto. HSM dual control + audit log |
-| Swissquote insider + trusted contact colluding | Can start, but **can't finish** | 48 h time-lock + alerts → the owner cancels |
-| Attacker with an unlocked phone (coerced or shoulder-surfed) | Can sign transactions, but can't silently change guardians | Guardian/parameter changes are time-locked too. Optional: high-value limits (see compliance) |
+## Evidence
 
-### Example: attacker with the user's email and SIM
-
-```mermaid
-sequenceDiagram
-  autonumber
-  actor A as Attacker with email and SIM
-  participant TC as Trusted contact
-  participant SQ as Swissquote
-  participant RM as Recovery module
-  actor U as Real owner
-  A->>RM: proposeRecovery with attacker key
-  RM-->>U: alert - recovery started
-  A->>TC: social engineering
-  TC->>RM: approve, 1 of 2
-  A->>SQ: tries KYC re-verification
-  SQ--xA: rejected, needs banking 2FA or video ident
-  U->>RM: cancelRecovery
-  Note over RM: attack stopped, account unchanged
-```
-
-**Accepted risk:** a user who has lost every device, ignores all notifications for the full time-lock, and whose guardians collude can be attacked. The time-locks and multi-channel alerts make this very unlikely, and it's a strictly better position than a lost seed phrase.
-
-## What Swissquote can and cannot do
-
-| Swissquote **can** | Swissquote **cannot** |
-|--------------------|------------------------|
-| Verify the client's identity (KYC) as one recovery factor | Transfer, freeze or spend client funds |
-| Approve a guardian recovery together with another guardian | Recover an account alone while the owner is active |
-| Start an inactivity recovery after 180 days of silence | Skip or shorten a time-lock |
-| Send recovery alerts on all channels | See or export the user's private key |
-| Help heirs regain access (inheritance service) | Block the owner from cancelling a recovery |
-
-## Demo script (recovery part)
-
-1. User has a funded wallet on phone A.
-2. **Attack:** "attacker" with the user's email starts a recovery to their own passkey. Gets one approval from a tricked trusted contact.
-3. User gets an alert on phone A → taps **Cancel**. Recovery dead.
-4. **Real loss:** user "loses" phone A. On phone B: new passkey → Swissquote KYC (mock) approves + trusted contact approves → 2-min time-lock → execute.
-5. Phone B sends a transaction. **Done:** create → sign → lose → recover.
-6. *(If time)* Path B: fast-forward the inactivity timer, Swissquote starts escrow recovery, show the cancel option.
+- Headless Chrome run with virtual passkeys against the real services: create wallet → attacker refused → recovery requested → old phone alerted and cancelled with Face ID → new phone sees the cancellation → second recovery completes → old phone locked out → Swissquote answers `409` to a co-sign request with the outdated share generation.
+- Second headless run: create → **replace kit** (old kit then refused with "This recovery kit is no longer valid") → phone and kit lost, kit **rebuilt from friend pieces 1 + 3** → recovered, same address → Swissquote stopped → **escrow** refuses an attacker, then recovers with kit + escrow, same Bitcoin and EVM addresses, deposit deleted.
+- Server log lines for each step (`[share] recovery for … cancelled by the owner's passkey`, `[share] recover done …`) and the matching events in `/present.html#live`.

@@ -1,12 +1,11 @@
-# contracts/ — Smart contracts
+# contracts/ — On-chain backup of the recovery kit
 
-Candidates (depends on the custody model we pick):
+`src/KitBackupMailbox.sol`: public mailbox for backing up a client's recovery kit with friends. It holds no funds, has no owner and stores only ciphertext. Friends register an inbox key signed by their own wallet; the client posts a signed backup (one encrypted piece per friend + the password-locked kit in chunks); friends give pieces back to the client's new phone. Design and threats: [`docs/onchain-backup.md`](../docs/onchain-backup.md).
 
-- **Smart account** (ERC-4337) with a passkey (P-256 / WebAuthn) signer
-- **Recovery module**: guardians / time-lock / multi-factor recovery
-- **Paymaster**: gasless transfers, e.g. paying gas in USDC (bonus)
-- **Policy hooks**: dApp allowlist, limits for high-value transactions (bonus)
+Deployed on Base Sepolia: [`0x52f41590EE5bD2a9912A58433F1868482860C4dD`](https://sepolia.basescan.org/address/0x52f41590EE5bD2a9912A58433F1868482860C4dD).
 
-Use audited building blocks (e.g. existing 4337 account implementations) instead of writing crypto from scratch.
-
-Tooling: TBD (e.g. Foundry). Target network: TBD testnet (e.g. Base Sepolia / Sepolia).
+```bash
+npm install          # OpenZeppelin 5.4.0 (EIP712, ECDSA) and forge-std
+forge test           # 11 tests
+forge build && node ../services/deploy-mailbox.mjs   # deploy with the testnet key from ../.env
+```

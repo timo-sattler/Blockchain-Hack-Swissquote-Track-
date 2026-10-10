@@ -1,5 +1,7 @@
 # Card payments from the self-custody wallet (optional feature)
 
+> **Status: designed, not built.** This design assumes the smart-account variant (an on-chain spending-limit module). In the MPC wallet that the demo uses, the equivalent would be a token allowance to Swissquote's card settlement address, granted by phone + Swissquote and capped by Swissquote's co-signing policy.
+
 Clients can pay with a Swissquote card directly from their self-custody wallet. Real-world precedents: Gnosis Pay (Visa card on a Safe account), MetaMask Card.
 
 ## The problem
