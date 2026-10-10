@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ServiceError } from '../../mpc/api'
-import { createWallet, describePasskeyError, loginWithPasskey, pairDevice, type CreateStage, type LoginResult } from '../../mpc/flows'
+import { createWallet, describePasskeyError, loginWithPasskey, pairDevice, replaceKit, type CreateStage, type LoginResult } from '../../mpc/flows'
 import type { Kit } from '../../mpc/kit'
 import { forgetPhoneWallet, loadPhoneWallet, savePhoneWallet, type PhoneWallet } from '../../mpc/store'
 import { Spinner } from '../icons'
@@ -33,7 +33,8 @@ function explain(error: unknown) {
 
 export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
   const [wallet, setWallet] = useState<PhoneWallet | null>(loadPhoneWallet)
-  const [pendingKit, setPendingKit] = useState<{ kit: Kit; title: string } | null>(null)
+  const [pendingKit, setPendingKit] = useState<{ kit: Kit; title: string; heading?: string; note?: string } | null>(null)
+  const [replaceStep, setReplaceStep] = useState<number | null>(null)
   const [kitSavedAt, setKitSavedAt] = useState<number | null>(() => loadKitSaved(loadPhoneWallet()?.walletId))
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
@@ -106,17 +107,45 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
     }
   }
 
+  async function replaceLostKit(current: PhoneWallet) {
+    setReplaceStep(0)
+    try {
+      const result = await replaceKit(current, setReplaceStep)
+      setWallet(result.wallet)
+      setPendingKit({
+        kit: result.kit,
+        title: 'Save your new recovery kit',
+        heading: 'Your old kit no longer works ✓',
+        note: 'Phone and Swissquote issued new shares. Whoever has your old kit file can no longer use it with anything you still use.',
+      })
+    } catch (e) {
+      onToast(explain(e))
+    } finally {
+      setReplaceStep(null)
+    }
+  }
+
+  if (wallet && replaceStep !== null)
+    return (
+      <section className="card">
+        <p className="loading-line">
+          <Spinner /> Phone and Swissquote are issuing new key shares… ({replaceStep}/4)
+        </p>
+      </section>
+    )
+
   if (wallet && pendingKit)
     return (
       <>
         <div className="welcome">
-          <strong>{pendingKit.title === 'Save your recovery kit' ? 'Your wallet is ready 🎉' : 'This device is connected 🎉'}</strong>
+          <strong>{pendingKit.heading ?? (pendingKit.title === 'Save your recovery kit' ? 'Your wallet is ready 🎉' : 'This device is connected 🎉')}</strong>
           <span>Share A is on this device, Share B at Swissquote. One step left: save Share C.</span>
           {pendingKit.title === 'Save your recovery kit' && <span>🎁 Swissquote is sending you a welcome bonus of test USDC + ETH for gas (demo).</span>}
         </div>
         <KitBackup
           kit={pendingKit.kit}
           title={pendingKit.title}
+          note={pendingKit.note}
           onSaved={() => {
             markKitSaved(pendingKit.kit.walletId)
             setPendingKit(null)
@@ -137,6 +166,7 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
           setWallet(null)
           setKitSavedAt(null)
         }}
+        onReplaceKit={() => replaceLostKit(wallet)}
       />
     )
 

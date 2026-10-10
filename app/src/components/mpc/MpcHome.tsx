@@ -3,12 +3,16 @@ import type { Address } from 'viem'
 import { BTC_EXPLORER, EXPLORER } from '../../config'
 import { formatEth, formatUsdc, short, timeAgo } from '../../lib/format'
 import { shareGet } from '../../mpc/api'
+import { backupAvailable } from '../../mpc/backup'
+import { refreshBlocklist } from '../../mpc/screening'
 import { btcBalance, evmBalances } from '../../mpc/chains'
 import type { PhoneWallet } from '../../mpc/store'
 import { AddFundsSheet } from '../AddFundsSheet'
 import { ArrowDown, ArrowUp, Bank, Copy, External, Fingerprint, Plus, Shield } from '../icons'
 import { ReceiveSheet } from '../ReceiveSheet'
+import { FriendBackups } from './FriendBackups'
 import { MpcSendSheet, type SentTransfer } from './MpcSendSheet'
+import { RecoveryAlert, ReplacedCard, useWalletStatus } from './RecoveryWatch'
 
 type Balances = { usdc: bigint; eth: bigint; btc: bigint }
 type SheetName = 'send' | 'receive' | 'add' | null
@@ -24,11 +28,26 @@ function loadHistory(walletId: string): SentTransfer[] {
 
 const formatBtc = (sats: bigint) => (Number(sats) / 1e8).toLocaleString('en-US', { maximumFractionDigits: 8 })
 
-export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: PhoneWallet; kitSavedAt: number | null; onToast: (m: string) => void; onForget: () => void }) {
+export function MpcHome({
+  wallet,
+  kitSavedAt,
+  onToast,
+  onForget,
+  onReplaceKit,
+}: {
+  wallet: PhoneWallet
+  kitSavedAt: number | null
+  onToast: (m: string) => void
+  onForget: () => void
+  onReplaceKit: () => void
+}) {
   const [balances, setBalances] = useState<Partial<Balances>>({})
   const [history, setHistory] = useState<SentTransfer[]>(() => loadHistory(wallet.walletId))
   const [sheet, setSheet] = useState<SheetName>(null)
   const [swissquoteOnline, setSwissquoteOnline] = useState<boolean | null>(null)
+  const { status, setStatus } = useWalletStatus(wallet.walletId)
+  // Swissquote issued newer shares (recovery or pairing elsewhere): this phone's share is outdated.
+  const replaced = !wallet.independent && !!status && status.epoch > (wallet.epoch ?? 1)
 
   const refresh = useCallback(async () => {
     const [evm, btc] = await Promise.allSettled([evmBalances(wallet.evmAddress as Address), btcBalance(wallet.btcAddress)])
@@ -44,6 +63,10 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
     const timer = setInterval(refresh, 12_000)
     return () => clearInterval(timer)
   }, [refresh])
+
+  useEffect(() => {
+    refreshBlocklist() // kept on the device, so kit payments are screened even while Swissquote is down
+  }, [])
 
   useEffect(() => {
     const check = () => shareGet('/health').then(() => setSwissquoteOnline(true), () => setSwissquoteOnline(false))
@@ -76,6 +99,19 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
 
   return (
     <>
+      {replaced ? (
+        <ReplacedCard />
+      ) : (
+        <RecoveryAlert
+          walletId={wallet.walletId}
+          recovery={status?.recovery ?? null}
+          onCancelled={(next) => {
+            setStatus(next)
+            onToast('Recovery cancelled')
+          }}
+        />
+      )}
+
       <section className="balance-card">
         <div className="balance-top">
           <span className="network">
@@ -96,7 +132,7 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
           {balances.eth !== undefined ? `${formatEth(balances.eth)} ETH for gas` : '… ETH'}
         </p>
         <div className="actions">
-          <button onClick={() => setSheet('send')}>
+          <button onClick={() => setSheet('send')} disabled={replaced}>
             <span>
               <ArrowUp />
             </span>
@@ -153,7 +189,16 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
               <strong>C · Your recovery kit</strong>
               <span>{kitSavedAt ? `Saved ${timeAgo(kitSavedAt)}` : 'Encrypted file you keep'}</span>
             </div>
-            <span className="pill">Yours</span>
+            <button
+              className="pill action"
+              disabled={replaced}
+              title="Kit lost or stolen? Issue a new one; the old kit stops working."
+              onClick={() => {
+                if (confirm('Replace your recovery kit? Phone and Swissquote issue new shares, and your old kit stops working. Use this if your kit was lost or stolen.')) onReplaceKit()
+              }}
+            >
+              Replace
+            </button>
           </li>
         </ul>
         <p className="fineprint left">
@@ -167,6 +212,8 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
           </a>
         </p>
       </section>
+
+      {backupAvailable && !replaced && !wallet.independent && <FriendBackups wallet={wallet} onToast={onToast} />}
 
       <section className="card">
         <div className="card-head">
