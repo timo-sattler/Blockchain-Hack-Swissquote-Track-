@@ -4,8 +4,7 @@
   "type": "module",
   "scripts": {
     "hub": "node hub.mjs",
-    "share": "node share-service.mjs",
-    "test": "node test-flow.mjs"
+    "share": "node share-service.mjs"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",
