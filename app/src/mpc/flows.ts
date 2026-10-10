@@ -74,13 +74,13 @@ export async function send(wallet: PhoneWallet, req: SendRequest, onStage: (stag
     const built = await buildBtcTx(wallet.publicKey, req.to, req.amount)
     const sigs: Signature[] = []
     for (let i = 0; i < built.sighashes.length; i++) sigs.push(await cosign({ psbt: built.psbt, inputIndex: i }, built.sighashes[i]))
-    if (kit) reportEvent({ type: 'signing', parties: ['A', 'C'] })
+    if (kit) reportEvent({ type: 'signing', parties: ['A', 'C'], name: wallet.name, evm: wallet.evmAddress })
     onStage('broadcast')
     hash = await sendBtcTx(built.tx, built.pub, sigs)
   } else {
     const unsignedTx = await buildEvmTx(wallet.evmAddress as Address, req.asset as 'USDC' | 'ETH', req.to, req.amount)
     const sig = await cosign({ unsignedTx }, hexToBytes(evmHash(unsignedTx)))
-    if (kit) reportEvent({ type: 'signing', parties: ['A', 'C'] })
+    if (kit) reportEvent({ type: 'signing', parties: ['A', 'C'], name: wallet.name, evm: wallet.evmAddress })
     onStage('broadcast')
     hash = await sendEvmTx(unsignedTx, sig, wallet.evmAddress as Address)
   }

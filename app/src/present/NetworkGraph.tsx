@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { erc20Abi, formatEther, formatUnits, type Address } from 'viem'
-import { SHARE_URL, USDC } from '../config'
+import { USDC } from '../config'
 import { publicClient } from '../wallet'
-import type { FeedItem } from './live'
+import type { FeedItem, Member, Treasury } from './live'
 
-type Member = { walletId: string; name: string; evmAddress: string; btcAddress: string; createdAt: number }
 type Balance = { usdc: bigint; eth: bigint }
-type Treasury = { address: string; usdc: string; eth: string; walletsFundable: number }
+type Point = { x: number; y: number }
 
-const W = 1000
+const W = 1400
 const H = 600
 const CENTER = { x: W / 2, y: H / 2 }
 const FRESH_MS = 6000
@@ -18,36 +17,22 @@ const getEthBalanceAbi = [
   { type: 'function', name: 'getEthBalance', stateMutability: 'view', inputs: [{ name: 'addr', type: 'address' }], outputs: [{ type: 'uint256' }] },
 ] as const
 
-/** Every client wallet as a node around Swissquote; every payment as an arrow from sender to recipient. */
-export function NetworkGraph({ items }: { items: FeedItem[] }) {
-  const [members, setMembers] = useState<Member[]>([])
+/**
+ * Every client wallet around Swissquote, with who holds which key share: the client holds A (phone)
+ * and C (recovery kit), Swissquote holds B for every wallet. Payments run as arrows between clients.
+ */
+export function NetworkGraph({ items, members: allMembers, treasury }: { items: FeedItem[]; members: Member[]; treasury: Treasury | null }) {
+  const members = useMemo(() => allMembers.slice(-20), [allMembers])
   const [balances, setBalances] = useState<Record<string, Balance>>({})
-  const [treasury, setTreasury] = useState<Treasury | null>(null)
   const [now, setNow] = useState(Date.now())
   const firstSeen = useRef(new Map<string, number>())
   const loadedOnce = useRef(false)
 
-  // Directory of wallets from the share service.
+  // Wallets that exist when the page opens appear calmly; later ones pop in.
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [list, t] = await Promise.all([
-          fetch(`${SHARE_URL}/wallets`).then((r) => r.json() as Promise<Member[]>),
-          fetch(`${SHARE_URL}/treasury`).then((r) => (r.ok ? (r.json() as Promise<Treasury>) : null)),
-        ])
-        // Wallets that exist when the slide opens appear calmly; later ones pop in.
-        for (const m of list) if (!firstSeen.current.has(m.walletId)) firstSeen.current.set(m.walletId, loadedOnce.current ? Date.now() : 0)
-        loadedOnce.current = true
-        setMembers(list.slice(-24))
-        setTreasury(t)
-      } catch {
-        // Share service offline: keep the last known picture.
-      }
-    }
-    load()
-    const timer = window.setInterval(load, 3000)
-    return () => window.clearInterval(timer)
-  }, [])
+    for (const m of members) if (!firstSeen.current.has(m.walletId)) firstSeen.current.set(m.walletId, loadedOnce.current ? Date.now() : 0)
+    if (members.length > 0) loadedOnce.current = true
+  }, [members])
 
   // Balances of all members in one multicall (USDC + ETH), refreshed regularly and right after payments.
   const paymentCount = items.filter((i) => i.type === 'tx_broadcast' || i.type === 'funded').length
@@ -94,13 +79,13 @@ export function NetworkGraph({ items }: { items: FeedItem[] }) {
     return () => window.clearInterval(timer)
   }, [])
 
-  // Place members on an ellipse around Swissquote.
   const positions = useMemo(() => {
-    const map = new Map<string, { x: number; y: number }>()
+    const map = new Map<string, Point>()
     const n = members.length
     members.forEach((m, i) => {
-      const angle = -Math.PI / 2 + (i / Math.max(n, 1)) * Math.PI * 2
-      map.set(m.walletId, { x: CENTER.x + Math.cos(angle) * 390, y: CENTER.y + Math.sin(angle) * 225 })
+      // Two wallets sit left and right; more are spread around the ring starting at the top.
+      const angle = (n <= 2 ? Math.PI : -Math.PI / 2) + (i / Math.max(n, 1)) * Math.PI * 2
+      map.set(m.walletId, { x: CENTER.x + Math.cos(angle) * (W * 0.36), y: CENTER.y + Math.sin(angle) * (H * 0.34) })
     })
     return map
   }, [members])
@@ -114,20 +99,40 @@ export function NetworkGraph({ items }: { items: FeedItem[] }) {
     return map
   }, [members])
 
-  // Arrows: payments between members, to outside addresses, and welcome bonuses from the treasury.
-  type Arrow = { id: string; from: { x: number; y: number }; to: { x: number; y: number }; label: string; at: number; kind: 'payment' | 'bonus' | 'external' }
-  const EXTERNAL = { x: W - 70, y: H - 40 }
+  // What is happening to each wallet right now.
+  const fresh = items.filter((i) => now - i.at < FRESH_MS)
+  const memberOf = (address?: string) => (address ? byAddress.get(address.toLowerCase()) : undefined)
+  const activity = new Map<string, { kind: 'cosign' | 'kit' | 'attack' | 'recovered'; label: string }>()
+  for (const item of [...fresh].reverse()) {
+    if (item.type === 'signing') {
+      const m = memberOf(item.evm)
+      if (!m) continue
+      const viaKit = !item.parties.includes('B')
+      activity.set(m.walletId, viaKit ? { kind: 'kit', label: 'A + C sign · no Swissquote' } : { kind: 'cosign', label: 'A + B sign' })
+    }
+    if (item.type === 'recovery_refused' || (item.type === 'recovery_requested' && item.by === 'attacker')) {
+      const m = memberOf(item.evm)
+      if (m) activity.set(m.walletId, { kind: 'attack', label: 'Attack refused' })
+    }
+    if (item.type === 'recovery_completed' || item.type === 'device_paired') {
+      const m = memberOf(item.evm)
+      if (m) activity.set(m.walletId, { kind: 'recovered', label: 'New Share A issued (B + C)' })
+    }
+  }
+
+  // Payment arrows between clients, to outside addresses, and welcome bonuses from the treasury.
+  type Arrow = { id: string; from: Point; to: Point; label: string; at: number; kind: 'payment' | 'bonus' | 'external' }
+  const EXTERNAL = { x: W - 100, y: H - 30 }
   const arrows: Arrow[] = []
   for (const item of items.slice(0, 40)) {
-    if (item.source === 'simulated') continue
     if (item.type === 'funded') {
-      const to = byAddress.get(item.to.toLowerCase())
+      const to = memberOf(item.to)
       const p = to && positions.get(to.walletId)
       if (p) arrows.push({ id: item.id, from: CENTER, to: p, label: `🎁 ${item.usdc} USDC`, at: item.at, kind: 'bonus' })
     }
     if (item.type === 'tx_broadcast' && item.from) {
-      const sender = byAddress.get(item.from.toLowerCase())
-      const recipient = item.to ? byAddress.get(item.to.toLowerCase()) : undefined
+      const sender = memberOf(item.from)
+      const recipient = memberOf(item.to)
       const from = sender && positions.get(sender.walletId)
       if (!from) continue
       const to = recipient ? positions.get(recipient.walletId) : EXTERNAL
@@ -135,31 +140,53 @@ export function NetworkGraph({ items }: { items: FeedItem[] }) {
     }
   }
   const hasExternal = arrows.some((a) => a.kind === 'external')
-  const compact = members.length > 12
+  const compact = members.length > 10
+  const nodeW = compact ? 200 : 250
+  const nodeH = compact ? 96 : 118
 
   return (
-    <svg className="network" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Live network of client wallets and payments">
+    <svg className="network" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Client wallets, the key shares each party holds, and payments">
       <defs>
-        <marker id="net-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0 0L10 5L0 10z" fill="#c7ccd8" />
-        </marker>
-        <marker id="net-arrow-hot" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0 0L10 5L0 10z" fill="#f05a2a" />
-        </marker>
-        <marker id="net-arrow-bonus" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M0 0L10 5L0 10z" fill="#0b8f5c" />
-        </marker>
+        {(
+          [
+            ['net-arrow', '#c7ccd8'],
+            ['net-arrow-hot', '#f05a2a'],
+            ['net-arrow-bonus', '#0b8f5c'],
+          ] as const
+        ).map(([id, color]) => (
+          <marker key={id} id={id} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M0 0L10 5L0 10z" fill={color} />
+          </marker>
+        ))}
       </defs>
+
+      {/* Share B links: Swissquote holds one share of every wallet. */}
+      {members.map((m) => {
+        const p = positions.get(m.walletId)!
+        const state = activity.get(m.walletId)
+        const hot = state?.kind === 'cosign' || state?.kind === 'recovered'
+        const bx = CENTER.x + (p.x - CENTER.x) * 0.3
+        const by = CENTER.y + (p.y - CENTER.y) * 0.3
+        return (
+          <g key={`b-${m.walletId}`} className={`net-share-link ${hot ? 'hot' : ''} ${state?.kind === 'attack' ? 'attack' : ''}`}>
+            <line x1={CENTER.x} y1={CENTER.y} x2={p.x} y2={p.y} />
+            <circle cx={bx} cy={by} r="15" className="share b" />
+            <text x={bx} y={by + 5} className="share-letter">
+              B
+            </text>
+          </g>
+        )
+      })}
 
       {[...arrows].reverse().map((a) => {
         const hot = now - a.at < FRESH_MS
-        const mx = (a.from.x + a.to.x) / 2 + (a.to.y - a.from.y) * 0.15
-        const my = (a.from.y + a.to.y) / 2 - (a.to.x - a.from.x) * 0.15
-        const d = `M${a.from.x} ${a.from.y} Q${mx} ${my} ${a.to.x} ${a.to.y}`
+        // Bend arrows away from the centre so they never run through Swissquote.
+        const mx = (a.from.x + a.to.x) / 2 + (a.to.y - a.from.y) * 0.32
+        const my = (a.from.y + a.to.y) / 2 - (a.to.x - a.from.x) * 0.32
         const marker = hot ? (a.kind === 'bonus' ? 'url(#net-arrow-bonus)' : 'url(#net-arrow-hot)') : 'url(#net-arrow)'
         return (
           <g key={a.id} className={`net-edge ${a.kind} ${hot ? 'hot' : ''}`}>
-            <path d={d} markerEnd={marker} />
+            <path d={`M${a.from.x} ${a.from.y} Q${mx} ${my} ${a.to.x} ${a.to.y}`} markerEnd={marker} />
             {hot && (
               <text x={mx} y={my} className="net-edge-label">
                 {a.label}
@@ -170,24 +197,27 @@ export function NetworkGraph({ items }: { items: FeedItem[] }) {
       })}
 
       <g className="net-center">
-        <circle cx={CENTER.x} cy={CENTER.y} r="68" />
-        <text x={CENTER.x} y={CENTER.y - 10} className="net-center-title">
+        <circle cx={CENTER.x} cy={CENTER.y} r="96" />
+        <text x={CENTER.x} y={CENTER.y - 26} className="net-center-title">
           Swissquote
         </text>
-        <text x={CENTER.x} y={CENTER.y + 14} className="net-center-sub">
-          co-signer · treasury
+        <text x={CENTER.x} y={CENTER.y + 2} className="net-center-sub">
+          holds Share B of
+        </text>
+        <text x={CENTER.x} y={CENTER.y + 24} className="net-center-sub">
+          {members.length} {members.length === 1 ? 'wallet' : 'wallets'} · never alone
         </text>
         {treasury && (
-          <text x={CENTER.x} y={CENTER.y + 36} className="net-center-sub">
-            {Number(treasury.usdc).toFixed(0)} USDC left
+          <text x={CENTER.x} y={CENTER.y + 52} className="net-center-sub">
+            Treasury {Number(treasury.usdc).toFixed(0)} USDC
           </text>
         )}
       </g>
 
       {hasExternal && (
         <g className="net-external">
-          <rect x={EXTERNAL.x - 60} y={EXTERNAL.y - 22} width="120" height="44" rx="22" />
-          <text x={EXTERNAL.x} y={EXTERNAL.y + 5}>
+          <rect x={EXTERNAL.x - 70} y={EXTERNAL.y - 22} width="140" height="44" rx="22" />
+          <text x={EXTERNAL.x} y={EXTERNAL.y + 6}>
             Outside wallets
           </text>
         </g>
@@ -197,26 +227,69 @@ export function NetworkGraph({ items }: { items: FeedItem[] }) {
         const p = positions.get(m.walletId)!
         const b = balances[m.walletId]
         const seen = firstSeen.current.get(m.walletId) ?? 0
-        const fresh = now - seen < FRESH_MS
-        const w = compact ? 140 : 172
-        const h = compact ? 62 : 76
+        const state = activity.get(m.walletId)
+        const isNew = now - seen < FRESH_MS
+        const x0 = p.x - nodeW / 2
+        const y0 = p.y - nodeH / 2
         return (
-          <g key={m.walletId} className={`net-node ${fresh ? 'fresh' : ''}`} style={{ transformOrigin: `${p.x}px ${p.y}px` }}>
-            <rect x={p.x - w / 2} y={p.y - h / 2} width={w} height={h} rx="16" />
-            <text x={p.x} y={p.y - (compact ? 8 : 12)} className="net-name">
-              {m.name.length > 16 ? `${m.name.slice(0, 15)}…` : m.name}
+          <g key={m.walletId} className={`net-node ${isNew ? 'fresh' : ''} ${state ? state.kind : ''}`} style={{ transformOrigin: `${p.x}px ${p.y}px` }}>
+            <rect x={x0} y={y0} width={nodeW} height={nodeH} rx="18" />
+            <text x={p.x} y={y0 + 34} className="net-name">
+              {m.name.length > 15 ? `${m.name.slice(0, 14)}…` : m.name}
             </text>
-            <text x={p.x} y={p.y + (compact ? 12 : 12)} className="net-usdc">
+            <text x={p.x} y={y0 + 66} className="net-usdc">
               {b ? `$${Number(formatUnits(b.usdc, 6)).toFixed(2)}` : '…'}
             </text>
             {!compact && (
-              <text x={p.x} y={p.y + 30} className="net-eth">
+              <text x={p.x} y={y0 + 92} className="net-eth">
                 {b ? `${Number(formatEther(b.eth)).toFixed(5)} ETH` : ''}
+              </text>
+            )}
+            {/* The client's own shares: A on the phone, C in the recovery kit. */}
+            <g className={`share-pin ${state?.kind === 'kit' || state?.kind === 'cosign' ? 'hot' : ''}`}>
+              <circle cx={x0 + 4} cy={y0 + 4} r="17" className="share a" />
+              <text x={x0 + 4} y={y0 + 10} className="share-letter">
+                A
+              </text>
+            </g>
+            <g className={`share-pin ${state?.kind === 'kit' || state?.kind === 'recovered' ? 'hot' : ''}`}>
+              <circle cx={x0 + nodeW - 4} cy={y0 + 4} r="17" className="share c" />
+              <text x={x0 + nodeW - 4} y={y0 + 10} className="share-letter">
+                C
+              </text>
+            </g>
+            {state && (
+              <text x={p.x} y={y0 + nodeH + 30} className={`net-status ${state.kind}`}>
+                {state.label}
               </text>
             )}
           </g>
         )
       })}
+
+      <g className="net-legend">
+        <circle cx="26" cy={H - 70} r="12" className="share a" />
+        <text x="26" y={H - 66} className="share-letter small">
+          A
+        </text>
+        <text x="46" y={H - 65}>
+          Phone (client)
+        </text>
+        <circle cx="26" cy={H - 42} r="12" className="share b" />
+        <text x="26" y={H - 38} className="share-letter small">
+          B
+        </text>
+        <text x="46" y={H - 37}>
+          Swissquote
+        </text>
+        <circle cx="26" cy={H - 14} r="12" className="share c" />
+        <text x="26" y={H - 10} className="share-letter small">
+          C
+        </text>
+        <text x="46" y={H - 9}>
+          Recovery kit (client) · any 2 of 3 sign
+        </text>
+      </g>
 
       {members.length === 0 && (
         <text x={CENTER.x} y={H - 40} className="net-empty">

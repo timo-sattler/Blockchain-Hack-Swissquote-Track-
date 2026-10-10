@@ -285,9 +285,9 @@ const routes = {
     const wallet = mustWallet(id)
     if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
     const attacker = body.kyc !== 'match'
-    emit({ type: 'recovery_requested', by: attacker ? 'attacker' : 'client' })
+    emit({ type: 'recovery_requested', by: attacker ? 'attacker' : 'client', name: wallet.name, evm: wallet.evmAddress })
     if (attacker) {
-      emit({ type: 'recovery_refused', reason: 'Liveness selfie does not match the KYC profile' })
+      emit({ type: 'recovery_refused', reason: 'Liveness selfie does not match the KYC profile', name: wallet.name, evm: wallet.evmAddress })
       throw new HttpError(403, 'Identity check failed: the selfie does not match the client on file. Recovery refused and the client was alerted.')
     }
     wallet.recovery = { state: 'pending', requestedAt: Date.now(), readyAt: Date.now() + RECOVERY_DELAY_MS }
@@ -392,8 +392,8 @@ function keygenStep(sid, state, incoming, body) {
         emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
         treasury.enqueue(wallet) // welcome bonus: test USDC + gas
       }
-      else if (state.kind === 'pair') emit({ type: 'device_paired', name: wallet.name })
-      else emit({ type: 'recovery_completed' })
+      else if (state.kind === 'pair') emit({ type: 'device_paired', name: wallet.name, evm: wallet.evmAddress })
+      else emit({ type: 'recovery_completed', name: wallet.name, evm: wallet.evmAddress })
       console.log(`[share] ${state.kind} done for ${wallet.name ?? wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
       return { publicKey: b64(publicKey), ...publicView(wallet) }
     }
@@ -413,7 +413,8 @@ function signStep(sid, state, incoming) {
       session.handleMessages(incoming)
       const last = session.lastMessage(state.hash) // single use: the session is dropped right after
       sessions.delete(sid)
-      emit({ type: 'signing', parties: ['A', 'B'] })
+      const signer = loadWallet(state.walletId)
+      emit({ type: 'signing', parties: ['A', 'B'], name: signer?.name, evm: signer?.evmAddress })
       return { messages: [toWire(last)] }
     }
     default:

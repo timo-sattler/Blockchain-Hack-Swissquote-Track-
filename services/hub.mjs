@@ -21,6 +21,7 @@ const TYPES = new Set([
 
 const clients = new Set()
 let history = []
+let resetAt = 0 // dashboards hide everything older than the last reset, including on-chain history
 
 function publish(event) {
   const entry = { ...event, at: Date.now(), id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` }
@@ -82,7 +83,7 @@ const server = createServer(async (req, res) => {
       connection: 'keep-alive',
     })
     res.write(`: ${' '.repeat(2048)}\n\n`)
-    res.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history })}\n\n`)
+    res.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history, resetAt })}\n\n`)
     clients.add(res)
     const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15_000)
     req.on('close', () => {
@@ -95,7 +96,7 @@ const server = createServer(async (req, res) => {
   // Polling fallback for networks that still buffer the event stream.
   if (req.method === 'GET' && url.pathname === '/state') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-    return res.end(JSON.stringify({ shareOnline, history }))
+    return res.end(JSON.stringify({ shareOnline, history, resetAt }))
   }
 
   if (req.method === 'POST' && url.pathname === '/events') {
@@ -111,7 +112,8 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'POST' && url.pathname === '/reset') {
     history = []
-    for (const client of clients) client.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history })}\n\n`)
+    resetAt = Date.now()
+    for (const client of clients) client.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history, resetAt })}\n\n`)
     return res.writeHead(204).end()
   }
 
