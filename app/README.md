@@ -97,7 +97,7 @@ Or from your own machine: `cd app && npx vercel --prod`.
 - `src/present/`: live dashboard (network graph with key shares, activity feed)
 - `src/App.tsx`: Swissquote-style shell with the bottom tab bar
 
-## Live dashboard ()
+## Live dashboard (`/present.html`)
 
 One page for the projector:
 
