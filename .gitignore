@@ -1,0 +1,26 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+*.tsbuildinfo
+
+# Foundry / Hardhat
+out/
+cache/
+broadcast/
+artifacts/
+typechain-types/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Reference screenshots of the real Swissquote app (may contain personal data)
+pitch/swissquote-app/

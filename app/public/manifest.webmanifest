@@ -1,0 +1,17 @@
+{
+  "name": "Swissquote Self-Custody Wallet",
+  "short_name": "SQ Wallet",
+  "description": "Self-custody wallet secured by a passkey. Prototype on Base Sepolia testnet.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eef0f8",
+  "theme_color": "#eef0f8",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
