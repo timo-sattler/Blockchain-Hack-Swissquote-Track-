@@ -1,105 +1,91 @@
 # app/ — Wallet frontend
 
-Self-custody wallet prototype: a passkey-owned ERC-4337 smart account on **Base Sepolia**, shown inside a mock-up of the Swissquote app.
+Self-custody wallet prototype: a **2-of-3 MPC wallet** for Bitcoin testnet4 and Base Sepolia, shown inside a mock-up of the Swissquote app. One key, three shares: the phone (A), the Swissquote share service (B, a mocked separate process in [`services/`](../services/README.md)) and a recovery kit the client keeps (C). Any two sign; the whole key never exists anywhere.
 
 ## Swissquote app mock-up
 
 The app opens as a look-alike of the Swissquote mobile app (Home, Trade, Bank, Plan) with a new **Crypto** tab in the bottom bar. Everything outside the Crypto tab is static demo data (marked *Demo data*) built from public marketing screenshots, without official logos. The Crypto tab shows:
 
 - **Held by Swissquote** (mock): the crypto Swissquote holds for the client today, with a mocked *Move to my self-custody wallet* flow.
-- **My self-custody wallet** (real): the passkey wallet described below, styled to match the app.
-
-Code: `src/sq/` (tabs, icons, mock data, styles); `src/App.tsx` hosts the tab bar.
+- **My self-custody wallet** (real): the MPC wallet described below.
 
 ## What works today
 
-- **Create:** Face ID / fingerprint creates a P-256 passkey in the device's secure element. Its public key is the owner of a smart account; the address is known immediately and the contract is deployed with the first transaction.
-- **Sign & send:** USDC or ETH transfers are signed with the passkey and submitted as a UserOperation through a bundler. The explorer link is shown once the transaction is in a block.
-- **Gasless (optional):** with `VITE_PAYMASTER_URL` set, a paymaster pays the gas, so the wallet only needs USDC.
-- **Receive:** QR code and copy button for the wallet address.
-- **Phone app:** installable on the home screen (PWA), full-screen with its own icon; see below.
-- **Who controls this wallet:** reads the owners live from the smart account contract and shows that only the passkey is an owner, with a link to verify it on the explorer.
-- **Mocked:** the Swissquote client session in the header and the 'from my Swissquote account' top-up (both marked `MOCK`).
+All of this was tested end to end in Chrome with a virtual passkey authenticator against the real share service:
 
-Not yet: recovery (guardians + time-lock), the compliance co-signer, linking the wallet to the bank account.
+- **Create:** a passkey is registered with Swissquote, then phone, share service and kit run distributed key generation (Silence Labs Silent Shard, DKLs23). Share C is encrypted with a password (PBKDF2 + AES-GCM) and downloaded as the recovery kit.
+- **Same key on every chain:** one public key gives a Bitcoin testnet address (P2WPKH) and an EVM address.
+- **Send with Swissquote:** passkey login, then phone + share service sign. The service decodes the transaction itself, signs its own hash of it, refuses sanctioned recipients (mock list) and asks for an extra confirmation above 1,000 USDC.
+- **Send without Swissquote:** if the service is unreachable, the app offers to sign with phone + recovery kit, entirely on the device.
+- **Recovery:** on a new phone, the kit + a mocked identity check start a safety delay (30 s in the demo, 48 h in production). A non-matching selfie (attacker with phone + e-mail) is refused. After the delay a new passkey is registered, kit + Swissquote rebuild Share A, and the client saves a new kit. **Addresses stay the same**; the old phone share no longer works with Swissquote.
+- **Live presentation** at `/present` that shows all of this as it happens.
+
+Funds are needed only for real broadcasts: test USDC and ETH for Base Sepolia, test BTC for testnet4 (**Add funds** links to the faucets).
+
+**Prototype limitation:** Share A sits in `localStorage`. In production it would be encrypted with a key from the passkey (WebAuthn PRF) or kept in the platform keychain.
 
 ## Run it
 
 ```bash
+# terminal 1 + 2: Swissquote share service and event hub (see services/README.md)
+cd services && npm install && npm run hub
+cd services && npm run share
+
+# terminal 3: the app
 cd app
 npm install
-cp .env.example .env.local   # optional: add a paymaster URL for gasless transactions
-npm run dev                  # http://localhost:5173
+npm run dev        # http://localhost:5173 (wallet) and /present.html (presentation)
 ```
 
-Passkeys need a secure context: `localhost` works in desktop Chrome, Edge and Safari. To test on a phone, deploy to an HTTPS host (see below).
+Passkeys need a secure context: `localhost` works in desktop Chrome, Edge and Safari. To test on a phone, deploy the app to an HTTPS host (see below) and expose the two services over HTTPS (e.g. a Cloudflare tunnel), then set `VITE_SHARE_URL` and `VITE_HUB_URL`.
 
-> **Passkeys are bound to the domain they were created on.** A wallet created on `localhost:5173` cannot be opened on the Vercel URL, and vice versa. Each domain gives you a separate wallet.
+> **Passkeys are bound to the domain they were created on.** A wallet created on `localhost:5173` cannot be used on the Vercel URL, and vice versa.
 
-### Try a transaction
+### Demo script
 
-1. Click **Create my wallet** and confirm the passkey prompt.
-2. Fund the shown address on Base Sepolia (**Add funds** links to both faucets):
-   - test USDC: https://faucet.circle.com
-   - without a paymaster, also a little ETH for gas: https://portal.cdp.coinbase.com/products/faucet
-3. Send a small amount to any address and open the explorer link.
-
-To send to a teammate: they create their own wallet and share the address via **Receive → Copy address**. Receiving needs no funds and no deployed contract.
+1. Crypto tab → **Create my wallet** → passkey → save the recovery kit.
+2. **Add funds** → faucets; then **Send** USDC on Base or BTC on testnet4. Watch `/present#live`.
+3. Stop the share service (Ctrl+C) → **Send** again → *Sign with my recovery kit instead*.
+4. **Remove wallet from this device** (lost phone) → *Lost your phone?* → kit → *Attacker* (refused) → again with *Take selfie as Anna* → wait → restore → same addresses.
 
 ## Phone app (installable web app)
 
-The wallet is a Progressive Web App: no app store needed. Opened over HTTPS on a phone, it can be added to the home screen and then runs full-screen with its own icon, like a native app. Face ID / fingerprint work as usual.
+The wallet is a Progressive Web App: no app store needed. Opened over HTTPS on a phone, it can be added to the home screen and then runs full-screen with its own icon.
 
 - **iPhone (Safari):** Share button → **Add to Home Screen**. The app shows this hint itself.
 - **Android (Chrome):** tap **Install** in the app's banner, or browser menu → **Install app**.
 
-Files: `public/manifest.webmanifest` (name, colours, icons), `public/sw.js` (offline shell; blockchain calls are never cached), `public/*.png` (icons), `src/components/InstallHint.tsx`.
+Files: `public/manifest.webmanifest`, `public/sw.js` (offline shell; blockchain calls are never cached), `public/*.png`, `src/components/InstallHint.tsx`.
 
 ## Deploy to Vercel
 
-One-time setup by whoever owns the GitHub repo (Timo), because Vercel needs access to it:
-
 1. Sign in at https://vercel.com with GitHub → **Add New… → Project** → import `Blockchain-Hack-Swissquote-Track-`.
-2. **Root Directory:** `app`. Framework preset **Vite** is detected automatically (build `npm run build`, output `dist`).
-3. Optional for gasless transfers: add the environment variable `VITE_PAYMASTER_URL`.
-4. **Deploy.** Every push to `main` then updates the production URL (e.g. `https://<project>.vercel.app`).
+2. **Root Directory:** `app`. Framework preset **Vite** is detected automatically.
+3. Environment variables: `VITE_SHARE_URL` and `VITE_HUB_URL` pointing to the services' public HTTPS addresses.
+4. **Deploy.** Use the production URL for the demo: preview URLs change per deploy, and passkeys are bound to the URL.
 
-Things to know:
-
-- **Use the production URL for the demo.** Preview deployments get a new URL per deploy, and a passkey created on one URL does not work on the next.
-- Preview deployments are protected by Vercel login by default. Teammates without a Vercel account can only open the production URL (or disable *Deployment Protection* in the project settings).
-- `vercel.json` makes sure the service worker is never cached, so new deploys reach installed apps.
+Or from your own machine: `cd app && npx vercel --prod`.
 
 ## Building blocks
 
-| Part | Choice | Why |
-|------|--------|-----|
-| Smart account | [Coinbase Smart Wallet](https://github.com/coinbase/smart-wallet) v1.1, factory `0xba5ed110…85842` | Audited, built for passkey owners, already deployed on Base Sepolia, supports multiple owners (needed for recovery) |
-| SDK | [viem](https://viem.sh) `account-abstraction` (`createWebAuthnCredential`, `toWebAuthnAccount`, `toCoinbaseSmartAccount`, `createBundlerClient`) | One dependency, no custom cryptography |
-| Bundler | Pimlico public endpoint (default), EntryPoint v0.6 | Works without an API key, rate-limited |
-| Paymaster | Any ERC-7677 paymaster URL, e.g. Pimlico with a free API key | Gasless transfers (bonus criterion) |
-| Token | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e` | Official testnet USDC |
-
-The passkey's public key and credential id are kept in `localStorage` so the app can rebuild the account. They are public data; the private key never leaves the authenticator. In production, Swissquote would store the public key with the client profile.
+| Part | Choice |
+|------|--------|
+| Threshold signatures | [Silence Labs Silent Shard](https://www.npmjs.com/package/@silencelaboratories/dkls-wasm-ll-web) (DKLs23, WASM), non-commercial license |
+| Passkeys | [SimpleWebAuthn](https://simplewebauthn.dev) (browser + server) |
+| EVM | [viem](https://viem.sh): transaction building, Base Sepolia RPC |
+| Bitcoin | [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer): SegWit transactions; mempool.space testnet4 API |
+| Recovery kit encryption | WebCrypto PBKDF2-SHA256 (310,000 iterations) + AES-GCM |
+| Token | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
 
 ## Code map
 
-- `src/config.ts`: chain, endpoints, token address
-- `src/wallet.ts`: passkey creation, smart account, balances, on-chain owners, sending, error messages
-- `src/App.tsx`: Swissquote-style shell with the bottom tab bar, toasts
+- `src/mpc/`: MPC protocol client, share service API, chains (EVM + Bitcoin), recovery kit, phone storage, end-to-end flows
+- `src/components/mpc/`: wallet UI (create, kit backup, home, send, recovery)
 - `src/sq/`: mocked Swissquote tabs (Home, Trade, Bank, Plan) and the Crypto tab
-- `src/components/`: onboarding, wallet home, send / receive / add-funds sheets, control card, icons
-- `src/lib/`: formatting and per-wallet activity history
+- `src/present/`: live presentation (slides, live architecture, activity feed)
+- `src/App.tsx`: Swissquote-style shell with the bottom tab bar
 
 ## Live presentation (`/present`)
 
-A slide deck for the pitch that also proves the system works: the architecture slide lights up and an activity feed fills as wallets are created and payments are signed.
-
-- Open `http://localhost:5173/present.html` (dev) or `https://<project>.vercel.app/present` (deployed).
-- **Keys:** → / Space / PageDown next, ← / PageUp back, `f` full screen, `s` play a simulated run, `c` clear the feed. Presenter clickers work.
-- **Live data comes from two sources:**
-  - the share service's server-sent events at `VITE_EVENTS_URL` (badge **LIVE**);
-  - transfers read straight from Base Sepolia and the Bitcoin testnet for the wallet that was created, or for `?evm=0x…&btc=tb1…` in the URL (badge **ON-CHAIN**).
-- The simulated run (key `s`) is for rehearsals and as a fallback; every simulated entry is marked **SIMULATED**.
-
-**Event format for the share service:** one JSON object per SSE `data:` line, as defined by `WalletEvent` in `src/present/live.ts`, e.g. `{"type":"signing","parties":["A","B"]}` or `{"type":"tx_broadcast","chain":"bitcoin","hash":"…","amount":"0.0005","asset":"BTC"}`. Party A = phone, B = Swissquote, C = recovery kit.
+- **Keys:** → / Space / PageDown next, ← / PageUp back, `f` full screen, `s` simulated run (rehearsal fallback, marked **SIMULATED**), `c` clear the feed.
+- **Live data:** events from the hub (badge **LIVE**) and transfers read straight from Base Sepolia and Bitcoin testnet4 (badge **ON-CHAIN**). On load the hub replays the session history, so a reload loses nothing.

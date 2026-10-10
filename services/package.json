@@ -1,0 +1,18 @@
+{
+  "name": "swissquote-wallet-services",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hub": "node hub.mjs",
+    "share": "node share-service.mjs",
+    "test": "node test-flow.mjs"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0",
+    "@scure/btc-signer": "^2.4.1",
+    "@silencelaboratories/dkls-wasm-ll-node": "^1.2.0",
+    "@simplewebauthn/server": "^14.0.3",
+    "viem": "^2.57.4"
+  }
+}

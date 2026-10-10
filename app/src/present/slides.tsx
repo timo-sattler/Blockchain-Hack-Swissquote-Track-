@@ -3,7 +3,7 @@ import { Feed } from './Feed'
 import { LiveArchitecture } from './LiveArchitecture'
 import type { FeedItem, ServiceStatus } from './live'
 
-export type Live = { items: FeedItem[]; status: ServiceStatus }
+export type Live = { items: FeedItem[]; status: ServiceStatus; shareOnline: boolean | null }
 export type Slide = { id: string; title: string; render: (live: Live) => ReactNode }
 
 const TEAM = ['Grace', 'Jeroen', 'Maxi', 'Timo', 'Vincent']
@@ -149,7 +149,7 @@ export const SLIDES: Slide[] = [
   {
     id: 'live',
     title: 'Live demo',
-    render: ({ items, status }) => (
+    render: ({ items, shareOnline }) => (
       <div className="frame live">
         <div className="live-head">
           <div>
@@ -166,7 +166,7 @@ export const SLIDES: Slide[] = [
           </ul>
         </div>
         <div className="live-grid">
-          <LiveArchitecture items={items} status={status} />
+          <LiveArchitecture items={items} shareOnline={shareOnline} />
           <div className="feed-panel">
             <h2>Activity</h2>
             <Feed items={items} compact />

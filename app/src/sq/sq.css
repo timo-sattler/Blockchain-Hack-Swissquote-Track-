@@ -903,3 +903,7 @@ body:has(.sq-app) {
   background: var(--accent);
   box-shadow: 0 0 0 2px var(--surface);
 }
+
+.sq-app .toast {
+  bottom: calc(96px + env(safe-area-inset-bottom));
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FeedItem, ServiceStatus } from './live'
+import type { FeedItem } from './live'
 
 type NodeId = 'phone' | 'sq' | 'kit' | 'kyc' | 'compliance' | 'registry' | 'notify' | 'btc' | 'base'
 type EdgeId = 'phone-sq' | 'phone-kit' | 'kit-sq' | 'sq-mocks' | 'phone-btc' | 'phone-base'
@@ -31,7 +31,7 @@ function highlightFor(item: FeedItem): Highlight {
   }
 }
 
-export function LiveArchitecture({ items, status }: { items: FeedItem[]; status: ServiceStatus }) {
+export function LiveArchitecture({ items, shareOnline }: { items: FeedItem[]; shareOnline: boolean | null }) {
   const [now, setNow] = useState(Date.now())
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 400)
@@ -44,9 +44,9 @@ export function LiveArchitecture({ items, status }: { items: FeedItem[]; status:
   const alert = (id: NodeId) => lit.some((h) => h.alert?.includes(id))
   const edgeOn = (id: EdgeId) => lit.some((h) => h.edges.includes(id))
 
-  // The service is "down" when its stream dropped, or the latest event says so.
-  const lastServiceEvent = items.find((i) => i.type === 'service_offline' || i.type === 'service_online')
-  const sqDown = status === 'offline' || lastServiceEvent?.type === 'service_offline'
+  // Live: the hub reports the share service's health. Simulated runs carry their own offline/online events.
+  const lastSimulated = items.find((i) => i.source === 'simulated' && (i.type === 'service_offline' || i.type === 'service_online'))
+  const sqDown = lastSimulated ? lastSimulated.type === 'service_offline' : shareOnline === false
 
   const cls = (id: NodeId, extra = '') =>
     ['la-node', extra, on(id) ? 'on' : '', alert(id) ? 'alert' : '', id === 'sq' && sqDown ? 'down' : ''].join(' ')

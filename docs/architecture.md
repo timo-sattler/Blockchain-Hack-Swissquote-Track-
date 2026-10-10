@@ -9,7 +9,7 @@ The wallet uses **2-of-3 threshold ECDSA (MPC)**. One key is generated in three 
 | Component | Real or mocked | Role | What the real version would be |
 |-----------|----------------|------|--------------------------------|
 | Swissquote app, Crypto tab (`app/`) | **Real** | UI, runs MPC party A, broadcasts transactions | Same, inside the native Swissquote app |
-| Share A + passkey | **Real** | Phone's share, encrypted at rest, unlocked by Face ID / fingerprint (WebAuthn PRF) | Same; native keychain on older devices without PRF |
+| Share A + passkey | **Real** | Phone's share. The passkey authorises every co-signature with Swissquote. Prototype: Share A is stored unencrypted in the browser | Share A encrypted with a key from the passkey (WebAuthn PRF) or kept in the platform keychain |
 | Recovery kit (Share C) | **Real** | Encrypted share file in the client's cloud drive, paper key to decrypt it | Same |
 | Guardian app (Share C, optional) | Planned | A relative holds Share C instead of the kit; no Swissquote account needed | Small companion app |
 | Share service (Share B) | **Mocked**, separate Node process with its own storage | Co-signs payments, enforces limits and the recovery policy | Swissquote service in an HSM / secure enclave |
@@ -36,6 +36,10 @@ The client app **never holds Share B**. Swissquote holds only one share and can 
 
 | Part | State |
 |------|-------|
-| 2-of-3 key generation, signing with every pair, lost-share recovery, Bitcoin + EVM signing | Validated in [`spikes/mpc`](../spikes/mpc/README.md) |
-| Share service as separate process, browser MPC, kit export, recovery UI, control room | Next |
-| App today | Swissquote app mock-up with a passkey smart-account wallet (EVM only), to be switched to MPC |
+| 2-of-3 key generation between app, share service and kit; passkey registration and login | **Built**, tested end to end |
+| Co-signing with transaction decoding, mock sanctions screening, high-value confirmation | **Built**, tested |
+| Signing with phone + kit when Swissquote is down | **Built**, tested |
+| Recovery with mock re-KYC, attacker refusal, delay, new passkey, new kit, same addresses | **Built**, tested |
+| Real broadcasts on Base Sepolia and Bitcoin testnet4 | Built; needs testnet funds in the wallet |
+| Live presentation fed by the event hub | **Built**, tested (including killing the share service) |
+| Guardian app (relative holds Share C), Share A encryption with WebAuthn PRF, gasless sends | Not built |

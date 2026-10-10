@@ -1,22 +1,20 @@
-import { useState } from 'react'
-import { createPasskey, explainError, type StoredPasskey } from '../wallet'
 import { Fingerprint, Shield, Users } from './icons'
 
-export function Onboarding({ clientName, onCreated }: { clientName: string; onCreated: (p: StoredPasskey) => void }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
-
-  async function create() {
-    setBusy(true)
-    setError('')
-    try {
-      onCreated(await createPasskey(`Swissquote Wallet – ${clientName}`))
-    } catch (e) {
-      setError(explainError(e))
-      setBusy(false)
-    }
-  }
-
+export function Onboarding({
+  clientName,
+  busy,
+  progress,
+  error,
+  onCreate,
+  onRecover,
+}: {
+  clientName: string
+  busy: boolean
+  progress?: string
+  error?: string
+  onCreate: () => void
+  onRecover: () => void
+}) {
   return (
     <section className="onboarding">
       <div className={`orb ${busy ? 'busy' : ''}`}>
@@ -30,10 +28,7 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
         <br />
         <span className="accent-text">Your control.</span>
       </h1>
-      <p className="lead">
-        A self-custody wallet that feels like your banking app. No seed phrase to write down. Just your face or
-        fingerprint.
-      </p>
+      <p className="lead">One wallet for Bitcoin and Ethereum. No seed phrase: your face or fingerprint, plus a recovery kit you keep.</p>
 
       <ul className="perks">
         <li>
@@ -42,7 +37,7 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
           </span>
           <div>
             <strong>Sign with Face ID</strong>
-            <span>Your key lives in your phone's secure chip and never leaves it.</span>
+            <span>Your phone holds one of three key shares. The full key never exists anywhere.</span>
           </div>
         </li>
         <li>
@@ -50,8 +45,8 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
             <Shield />
           </span>
           <div>
-            <strong>Only you can move funds</strong>
-            <span>Not even Swissquote. The blockchain enforces it.</span>
+            <strong>Swissquote can never act alone</strong>
+            <span>It holds one share: it can check and co-sign, but not move or freeze your funds.</span>
           </div>
         </li>
         <li>
@@ -60,16 +55,18 @@ export function Onboarding({ clientName, onCreated }: { clientName: string; onCr
           </span>
           <div>
             <strong>Lose your phone, not your money</strong>
-            <span>Recover with guardians you choose. Coming next.</span>
+            <span>Your recovery kit plus an identity check bring the wallet back, with the same addresses.</span>
           </div>
         </li>
       </ul>
 
-      <button className="primary big" onClick={create} disabled={busy}>
-        {busy ? 'Waiting for your passkey…' : 'Create my wallet'}
+      <button className="primary big" onClick={onCreate} disabled={busy}>
+        {busy ? (progress ?? 'Working…') : 'Create my wallet'}
       </button>
       {error && <p className="error center">{error}</p>}
-      <p className="fineprint">Takes about 5 seconds · Base Sepolia testnet</p>
+      <button className="text-btn" onClick={onRecover} disabled={busy}>
+        Lost your phone? Recover with your kit
+      </button>
     </section>
   )
 }

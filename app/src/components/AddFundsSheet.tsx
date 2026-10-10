@@ -1,10 +1,10 @@
-import { ETH_FAUCET, GASLESS, USDC_FAUCET } from '../config'
+import { BTC_FAUCET, ETH_FAUCET, USDC_FAUCET } from '../config'
 import { Bank, Drop, External } from './icons'
 import { Sheet } from './Sheet'
 
-export function AddFundsSheet({ onCopyAddress, onClose }: { onCopyAddress: () => void; onClose: () => void }) {
-  const openFaucet = (url: string) => {
-    onCopyAddress()
+export function AddFundsSheet({ evmAddress, btcAddress, onCopy, onClose }: { evmAddress: string; btcAddress: string; onCopy: (address: string) => void; onClose: () => void }) {
+  const open = (url: string, address: string) => {
+    onCopy(address)
     window.open(url, '_blank', 'noreferrer')
   }
 
@@ -19,29 +19,35 @@ export function AddFundsSheet({ onCopyAddress, onClose }: { onCopyAddress: () =>
             <strong>
               From my Swissquote account <span className="badge mock">MOCK</span>
             </strong>
-            <span>Move CHF or USDC from your trading account in one tap. Coming soon.</span>
+            <span>Move CHF or crypto from your trading account to this verified wallet. Coming soon.</span>
           </div>
         </div>
-        <button className="option" onClick={() => openFaucet(USDC_FAUCET)}>
+        <button className="option" onClick={() => open(USDC_FAUCET, evmAddress)}>
           <span className="option-icon usdc">$</span>
           <div>
             <strong>Free test USDC</strong>
-            <span>Circle faucet · pick “Base Sepolia”, your address is copied</span>
+            <span>Circle faucet · pick “Base Sepolia”, your 0x address is copied</span>
           </div>
           <External />
         </button>
-        {!GASLESS && (
-          <button className="option" onClick={() => openFaucet(ETH_FAUCET)}>
-            <span className="option-icon">
-              <Drop />
-            </span>
-            <div>
-              <strong>Free test ETH for gas</strong>
-              <span>Coinbase faucet · a tiny amount pays the network fees</span>
-            </div>
-            <External />
-          </button>
-        )}
+        <button className="option" onClick={() => open(ETH_FAUCET, evmAddress)}>
+          <span className="option-icon">
+            <Drop />
+          </span>
+          <div>
+            <strong>Free test ETH for gas</strong>
+            <span>Coinbase faucet · Base Sepolia, pays the network fees</span>
+          </div>
+          <External />
+        </button>
+        <button className="option" onClick={() => open(BTC_FAUCET, btcAddress)}>
+          <span className="option-icon btc">₿</span>
+          <div>
+            <strong>Free test Bitcoin</strong>
+            <span>mempool.space testnet4 faucet · your tb1 address is copied</span>
+          </div>
+          <External />
+        </button>
       </div>
     </Sheet>
   )

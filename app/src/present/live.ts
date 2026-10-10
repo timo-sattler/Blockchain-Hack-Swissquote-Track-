@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPublicClient, formatUnits, http, isAddress, parseAbiItem, type Address } from 'viem'
 import { baseSepolia } from 'viem/chains'
-import { RPC_URL, USDC } from '../config'
+import { BTC_EXPLORER, HUB_URL, MEMPOOL_API, RPC_URL, USDC } from '../config'
 
 /** Key-share holders: A = client phone, B = Swissquote share service, C = recovery kit. */
 export type Party = 'A' | 'B' | 'C'
 export type Chain = 'bitcoin' | 'base'
 
 /**
- * Events the share service publishes on its server-sent-events stream (VITE_EVENTS_URL).
+ * Events the services and the wallet app publish through the event hub (services/hub.mjs).
  * The service emits exactly these JSON objects, one per `data:` line.
  */
 export type WalletEvent =
@@ -23,11 +23,10 @@ export type WalletEvent =
 
 export type FeedItem = WalletEvent & { id: string; at: number; source: 'service' | 'chain' | 'simulated' }
 
-export type ServiceStatus = 'connected' | 'offline' | 'not-configured'
+/** Connection to the event hub (not the share service: its health arrives as events). */
+export type ServiceStatus = 'connected' | 'offline'
 
-const EVENTS_URL = import.meta.env.VITE_EVENTS_URL || ''
-export const MEMPOOL_API = import.meta.env.VITE_MEMPOOL_API || 'https://mempool.space/testnet4/api'
-export const BTC_EXPLORER = MEMPOOL_API.replace('/api', '')
+const EVENTS_URL = import.meta.env.VITE_EVENTS_URL || `${HUB_URL}/events`
 export const EVM_EXPLORER = 'https://sepolia.basescan.org'
 
 const publicClient = createPublicClient({ chain: baseSepolia, transport: http(RPC_URL) })
@@ -56,27 +55,40 @@ const nextId = () => `${Date.now()}-${counter++}`
 /** Live feed: share-service events, on-chain transfers of the known wallets, and the optional simulation. */
 export function useLiveFeed() {
   const [items, setItems] = useState<FeedItem[]>([])
-  const [status, setStatus] = useState<ServiceStatus>(EVENTS_URL ? 'offline' : 'not-configured')
+  const [status, setStatus] = useState<ServiceStatus>('offline')
+  const [shareOnline, setShareOnline] = useState<boolean | null>(null)
   const [simulating, setSimulating] = useState(false)
   const [wallet, setWallet] = useState<{ btc: string; evm: string } | null>(initialWallet)
   const timers = useRef<number[]>([])
 
   const push = useCallback((event: WalletEvent, source: FeedItem['source'], at = Date.now(), id = nextId()) => {
-    setItems((current) => (current.some((i) => i.id === id) ? current : [{ ...event, id, at, source }, ...current].slice(0, 60)))
+    setItems((current) => {
+      const duplicate = current.some(
+        (i) => i.id === id || (event.type === 'tx_broadcast' && i.type === 'tx_broadcast' && i.hash === event.hash && i.source !== 'simulated'),
+      )
+      return duplicate ? current : [{ ...event, id, at, source }, ...current].sort((a, b) => b.at - a.at).slice(0, 60)
+    })
     if (event.type === 'wallet_created' && source !== 'simulated') setWallet({ btc: event.btcAddress, evm: event.evmAddress })
+    if (event.type === 'service_offline' || event.type === 'service_online') setShareOnline(event.type === 'service_online')
   }, [])
 
-  // Share service stream.
+  // Event hub stream: first the current state and history, then every event as it happens.
   useEffect(() => {
-    if (!EVENTS_URL) return
     const source = new EventSource(EVENTS_URL)
     source.onopen = () => setStatus('connected')
     source.onerror = () => setStatus('offline')
+    source.addEventListener('state', (message) => {
+      const state = JSON.parse((message as MessageEvent).data) as { shareOnline: boolean | null; history: (WalletEvent & { id: string; at: number })[] }
+      setShareOnline(state.shareOnline)
+      setItems((current) => current.filter((i) => i.source !== 'service'))
+      for (const entry of state.history) push(entry, 'service', entry.at, entry.id)
+    })
     source.onmessage = (message) => {
       try {
-        push(JSON.parse(message.data) as WalletEvent, 'service')
+        const entry = JSON.parse(message.data) as WalletEvent & { id: string; at: number }
+        push(entry, 'service', entry.at, entry.id)
       } catch {
-        // Ignore malformed lines; the stream also carries heartbeats.
+        // Ignore malformed lines.
       }
     }
     return () => source.close()
@@ -122,7 +134,7 @@ export function useLiveFeed() {
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
 
-  return { items, status, simulating, simulate, clear, wallet }
+  return { items, status, shareOnline, simulating, simulate, clear, wallet }
 }
 
 /** Wallet addresses can be passed in the URL (?evm=0x…&btc=tb1…) to watch an existing wallet. */
