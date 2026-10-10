@@ -37,7 +37,22 @@ npm install
 npm run dev        # http://localhost:5173 (wallet) and /present.html (presentation)
 ```
 
-Passkeys need a secure context: `localhost` works in desktop Chrome, Edge and Safari. To test on a phone, deploy the app to an HTTPS host (see below) and expose the two services over HTTPS (e.g. a Cloudflare tunnel), then set `VITE_SHARE_URL` and `VITE_HUB_URL`.
+The dev server proxies `/share` → share service (8790) and `/hub` → event hub (8787), so app, presentation and services share one origin.
+
+Passkeys need a secure context: `http://localhost` or `https://`. An IP address over http does **not** work.
+
+### Let others join (phones, team, projector): Cloudflare tunnel
+
+```bash
+# Windows: winget install Cloudflare.cloudflared
+cloudflared tunnel --url http://localhost:5173
+```
+
+cloudflared prints a public `https://….trycloudflare.com` address. That one URL serves the wallet, the presentation (`/present.html`) and, through the proxy, both services. The presentation's **Join** slide shows it as a QR code.
+
+- It works while your laptop and the three processes run.
+- The address changes every time the tunnel restarts, and passkeys are bound to the address: start it once before the demo and keep it running.
+- Some networks buffer the live event stream through the tunnel; the presentation then polls the hub every second automatically.
 
 > **Passkeys are bound to the domain they were created on.** A wallet created on `localhost:5173` cannot be used on the Vercel URL, and vice versa.
 

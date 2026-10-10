@@ -12,9 +12,10 @@ export const EXPLORER = 'https://sepolia.basescan.org'
 export const ETH_FAUCET = 'https://portal.cdp.coinbase.com/products/faucet'
 export const USDC_FAUCET = 'https://faucet.circle.com'
 
-// MPC wallet services (run locally with `npm run share` and `npm run hub` in services/).
-export const SHARE_URL = import.meta.env.VITE_SHARE_URL || 'http://localhost:8790'
-export const HUB_URL = import.meta.env.VITE_HUB_URL || 'http://localhost:8787'
+// MPC wallet services (services/: npm run share, npm run hub). By default they are reached through the
+// Vite proxy on the same origin as the app; set the variables when the app is hosted elsewhere.
+export const SHARE_URL = import.meta.env.VITE_SHARE_URL || '/share'
+export const HUB_URL = import.meta.env.VITE_HUB_URL || '/hub'
 
 // Bitcoin testnet4 via mempool.space (balances, UTXOs, broadcasting).
 export const MEMPOOL_API = import.meta.env.VITE_MEMPOOL_API || 'https://mempool.space/testnet4/api'

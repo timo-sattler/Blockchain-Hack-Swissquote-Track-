@@ -73,7 +73,14 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`)
 
   if (req.method === 'GET' && url.pathname === '/events') {
-    res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' })
+    // no-transform + padding: proxies and tunnels (Cloudflare) must not buffer or compress the stream.
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      'x-accel-buffering': 'no',
+      connection: 'keep-alive',
+    })
+    res.write(`: ${' '.repeat(2048)}\n\n`)
     res.write(`event: state\ndata: ${JSON.stringify({ shareOnline, history })}\n\n`)
     clients.add(res)
     const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15_000)
@@ -82,6 +89,12 @@ const server = createServer(async (req, res) => {
       clients.delete(res)
     })
     return
+  }
+
+  // Polling fallback for networks that still buffer the event stream.
+  if (req.method === 'GET' && url.pathname === '/state') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+    return res.end(JSON.stringify({ shareOnline, history }))
   }
 
   if (req.method === 'POST' && url.pathname === '/events') {

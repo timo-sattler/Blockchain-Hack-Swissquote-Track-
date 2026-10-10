@@ -607,6 +607,78 @@ p {
   line-height: 1.5;
 }
 
+/* ---------- Join ---------- */
+
+.join {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 520px;
+  gap: 64px;
+  align-items: center;
+}
+
+.join h1 {
+  margin-top: 10px;
+  font-size: 60px;
+  font-weight: 800;
+  letter-spacing: -1.6px;
+  line-height: 1.08;
+}
+
+.join ol {
+  margin: 36px 0 0;
+  padding-left: 36px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: 30px;
+  color: var(--muted);
+}
+
+.join-count {
+  margin-top: 40px;
+  font-size: 26px;
+}
+
+.join-count strong {
+  font-size: 44px;
+  color: var(--accent);
+}
+
+.join-count span {
+  color: var(--muted);
+}
+
+.join-warning {
+  margin-top: 18px;
+  font-size: 18px;
+  color: var(--bad);
+}
+
+.join-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  padding: 36px;
+  box-shadow: 0 12px 36px rgba(20, 30, 60, 0.08);
+}
+
+.join-qr img {
+  width: 100%;
+  display: block;
+}
+
+.join-qr code {
+  font-size: 18px;
+  color: var(--muted);
+  word-break: break-all;
+  text-align: center;
+}
+
 /* ---------- Threat model ---------- */
 
 .qa {

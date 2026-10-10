@@ -59,7 +59,7 @@ export function useLiveFeed() {
   const [status, setStatus] = useState<ServiceStatus>('offline')
   const [shareOnline, setShareOnline] = useState<boolean | null>(null)
   const [simulating, setSimulating] = useState(false)
-  const [wallet, setWallet] = useState<{ btc: string; evm: string } | null>(initialWallet)
+  const [wallets, setWallets] = useState<WatchedWallet[]>(initialWallets)
   const timers = useRef<number[]>([])
 
   const push = useCallback((event: WalletEvent, source: FeedItem['source'], at = Date.now(), id = nextId()) => {
@@ -69,20 +69,33 @@ export function useLiveFeed() {
       )
       return duplicate ? current : [{ ...event, id, at, source }, ...current].sort((a, b) => b.at - a.at).slice(0, 60)
     })
-    if (event.type === 'wallet_created' && source !== 'simulated') setWallet({ btc: event.btcAddress, evm: event.evmAddress })
+    if (event.type === 'wallet_created' && source !== 'simulated')
+      setWallets((current) =>
+        current.some((w) => w.evm === event.evmAddress) ? current : [...current, { btc: event.btcAddress, evm: event.evmAddress }].slice(-MAX_WATCHED),
+      )
     if (event.type === 'service_offline' || event.type === 'service_online') setShareOnline(event.type === 'service_online')
   }, [])
 
   // Event hub stream: first the current state and history, then every event as it happens.
+  // Some tunnels buffer server-sent events; if no state arrives within 3 s, poll the hub instead.
   useEffect(() => {
+    type HubState = { shareOnline: boolean | null; history: (WalletEvent & { id: string; at: number })[] }
+    let streaming = false
+    let pollTimer: number | undefined
+
+    const applyState = (state: HubState, replace: boolean) => {
+      setShareOnline(state.shareOnline)
+      if (replace) setItems((current) => current.filter((i) => i.source !== 'service'))
+      for (const entry of state.history) push(entry, 'service', entry.at, entry.id)
+    }
+
     const source = new EventSource(EVENTS_URL)
     source.onopen = () => setStatus('connected')
-    source.onerror = () => setStatus('offline')
+    source.onerror = () => !pollTimer && setStatus('offline')
     source.addEventListener('state', (message) => {
-      const state = JSON.parse((message as MessageEvent).data) as { shareOnline: boolean | null; history: (WalletEvent & { id: string; at: number })[] }
-      setShareOnline(state.shareOnline)
-      setItems((current) => current.filter((i) => i.source !== 'service'))
-      for (const entry of state.history) push(entry, 'service', entry.at, entry.id)
+      streaming = true
+      setStatus('connected')
+      applyState(JSON.parse((message as MessageEvent).data), true)
     })
     source.onmessage = (message) => {
       try {
@@ -92,15 +105,37 @@ export function useLiveFeed() {
         // Ignore malformed lines.
       }
     }
-    return () => source.close()
+
+    const fallback = window.setTimeout(() => {
+      if (streaming) return
+      source.close()
+      const poll = async () => {
+        try {
+          const response = await fetch(`${HUB_URL}/state`, { cache: 'no-store' })
+          applyState((await response.json()) as HubState, false)
+          setStatus('connected')
+        } catch {
+          setStatus('offline')
+        }
+      }
+      poll()
+      pollTimer = window.setInterval(poll, 1000)
+    }, 3000)
+
+    return () => {
+      source.close()
+      window.clearTimeout(fallback)
+      window.clearInterval(pollTimer)
+    }
   }, [push])
 
-  // On-chain transfers, read straight from the chains so they don't depend on our own services.
+  // On-chain transfers of every wallet created in this session, read straight from the chains so they
+  // don't depend on our own services.
   useEffect(() => {
-    if (!wallet) return
+    if (wallets.length === 0) return
     let stopped = false
     const poll = async () => {
-      const found = await Promise.allSettled([baseTransfers(wallet.evm), bitcoinTransfers(wallet.btc)])
+      const found = await Promise.allSettled(wallets.flatMap((w) => [baseTransfers(w.evm), bitcoinTransfers(w.btc)]))
       if (stopped) return
       for (const result of found) {
         if (result.status !== 'fulfilled') continue
@@ -108,12 +143,12 @@ export function useLiveFeed() {
       }
     }
     poll()
-    const timer = window.setInterval(poll, 10_000)
+    const timer = window.setInterval(poll, 15_000)
     return () => {
       stopped = true
       window.clearInterval(timer)
     }
-  }, [wallet, push])
+  }, [wallets, push])
 
   const simulate = useCallback(() => {
     timers.current.forEach(window.clearTimeout)
@@ -135,15 +170,18 @@ export function useLiveFeed() {
 
   useEffect(() => () => timers.current.forEach(window.clearTimeout), [])
 
-  return { items, status, shareOnline, simulating, simulate, clear, wallet }
+  return { items, status, shareOnline, simulating, simulate, clear, wallets }
 }
 
+type WatchedWallet = { btc: string; evm: string }
+const MAX_WATCHED = 12 // keeps the public explorer APIs within their rate limits
+
 /** Wallet addresses can be passed in the URL (?evm=0x…&btc=tb1…) to watch an existing wallet. */
-function initialWallet() {
+function initialWallets(): WatchedWallet[] {
   const params = new URLSearchParams(window.location.search)
   const evm = params.get('evm') ?? ''
   const btc = params.get('btc') ?? ''
-  return evm || btc ? { evm, btc } : null
+  return evm || btc ? [{ evm, btc }] : []
 }
 
 type ChainTx = { event: Extract<WalletEvent, { type: 'tx_broadcast' }>; at: number }

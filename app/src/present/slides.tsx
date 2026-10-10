@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Feed } from './Feed'
+import { JoinSlide } from './JoinSlide'
 import { LiveArchitecture } from './LiveArchitecture'
 import type { FeedItem, ServiceStatus } from './live'
 
@@ -145,6 +146,11 @@ export const SLIDES: Slide[] = [
         <img className="arch-img" src="/architecture.svg" alt="Architecture diagram" />
       </div>
     ),
+  },
+  {
+    id: 'join',
+    title: 'Join the demo',
+    render: ({ items }) => <JoinSlide items={items} />,
   },
   {
     id: 'live',
