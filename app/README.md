@@ -4,10 +4,7 @@ Self-custody wallet prototype: a **2-of-3 MPC wallet** for Bitcoin testnet4 and 
 
 ## Swissquote app mock-up
 
-The app opens as a look-alike of the Swissquote mobile app (Home, Trade, Bank, Plan) with a new **Crypto** tab in the bottom bar. Everything outside the Crypto tab is static demo data (marked *Demo data*) built from public marketing screenshots, without official logos. The Crypto tab shows:
-
-- **Held by Swissquote** (mock): the crypto Swissquote holds for the client today, with a mocked *Move to my self-custody wallet* flow.
-- **My self-custody wallet** (real): the MPC wallet described below.
+The app opens as a look-alike of the Swissquote mobile app (Home, Trade, Bank, Plan) with a new **Crypto** tab in the bottom bar. Everything outside the Crypto tab is static demo data (marked *Demo data*) built from public marketing screenshots, without official logos. The Crypto tab is the real MPC self-custody wallet described below.
 
 ## What works today
 

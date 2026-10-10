@@ -400,7 +400,6 @@ body:has(.sq-app) {
 }
 
 .sq-quotes,
-.sq-coins,
 .sq-transactions,
 .sq-plans {
   list-style: none;
@@ -605,8 +604,7 @@ body:has(.sq-app) {
   padding: 12px 0;
 }
 
-.sq-transactions li + li,
-.sq-coins li + li {
+.sq-transactions li + li {
   border-top: 1px solid var(--line);
 }
 
@@ -700,52 +698,6 @@ body:has(.sq-app) {
 
 /* ---------- Crypto ---------- */
 
-.sq-coins {
-  margin-top: 8px;
-}
-
-.sq-coins li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 0;
-}
-
-.sq-coins li > div {
-  display: flex;
-  flex-direction: column;
-}
-
-.sq-coins strong {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.sq-coins li > div span {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.sq-coin {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  color: #fff;
-  font-weight: 700;
-  font-size: 15px;
-  flex: none;
-}
-
-.sq-coin-value {
-  margin-left: auto;
-  color: var(--text);
-  font-weight: 600;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
 .sq-section-title {
   display: flex;
   justify-content: space-between;
@@ -785,54 +737,6 @@ body:has(.sq-app) {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-
-.sq-move {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sq-move .badge {
-  align-self: flex-start;
-}
-
-.sq-move ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  counter-reset: step;
-}
-
-.sq-move li {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 0 10px 40px;
-  counter-increment: step;
-}
-
-.sq-move li::before {
-  content: counter(step);
-  position: absolute;
-  left: 0;
-  top: 10px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 700;
-  font-size: 14px;
-}
-
-.sq-move li span {
-  font-size: 13.5px;
-  color: var(--muted);
-  line-height: 1.45;
 }
 
 /* Wallet components inside the Swissquote theme */
