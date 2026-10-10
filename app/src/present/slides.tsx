@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Feed } from './Feed'
 import { JoinSlide } from './JoinSlide'
 import { LiveArchitecture } from './LiveArchitecture'
+import { NetworkGraph } from './NetworkGraph'
 import type { FeedItem, ServiceStatus } from './live'
 
 export type Live = { items: FeedItem[]; status: ServiceStatus; shareOnline: boolean | null }
@@ -151,6 +152,29 @@ export const SLIDES: Slide[] = [
     id: 'join',
     title: 'Join the demo',
     render: ({ items }) => <JoinSlide items={items} />,
+  },
+  {
+    id: 'network',
+    title: 'Live network',
+    render: ({ items }) => (
+      <div className="frame live">
+        <div className="live-head">
+          <div>
+            <p className="kicker">Live network · Base Sepolia</p>
+            <h1>Who pays whom, right now</h1>
+          </div>
+        </div>
+        <div className="live-grid">
+          <div className="network-panel">
+            <NetworkGraph items={items} />
+          </div>
+          <div className="feed-panel">
+            <h2>Activity</h2>
+            <Feed items={items} compact />
+          </div>
+        </div>
+      </div>
+    ),
   },
   {
     id: 'live',

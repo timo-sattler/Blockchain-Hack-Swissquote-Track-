@@ -112,6 +112,7 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
         <div className="welcome">
           <strong>{pendingKit.title === 'Save your recovery kit' ? 'Your wallet is ready 🎉' : 'This device is connected 🎉'}</strong>
           <span>Share A is on this device, Share B at Swissquote. One step left: save Share C.</span>
+          {pendingKit.title === 'Save your recovery kit' && <span>🎁 Swissquote is sending you a welcome bonus of test USDC + ETH for gas (demo).</span>}
         </div>
         <KitBackup
           kit={pendingKit.kit}

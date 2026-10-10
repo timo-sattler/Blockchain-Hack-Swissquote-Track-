@@ -84,7 +84,15 @@ export async function send(wallet: PhoneWallet, req: SendRequest, onStage: (stag
     onStage('broadcast')
     hash = await sendEvmTx(unsignedTx, sig, wallet.evmAddress as Address)
   }
-  reportEvent({ type: 'tx_broadcast', chain, hash, amount: req.amount, asset: req.asset })
+  reportEvent({
+    type: 'tx_broadcast',
+    chain,
+    hash,
+    amount: req.amount,
+    asset: req.asset,
+    from: chain === 'bitcoin' ? wallet.btcAddress : wallet.evmAddress,
+    to: req.to.trim(),
+  })
   return { hash, chain }
 }
 

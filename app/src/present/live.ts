@@ -14,13 +14,14 @@ export type Chain = 'bitcoin' | 'base'
 export type WalletEvent =
   | { type: 'wallet_created'; btcAddress: string; evmAddress: string; name?: string }
   | { type: 'signing'; parties: Party[] }
-  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string }
+  | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string; from?: string; to?: string }
   | { type: 'service_offline' }
   | { type: 'service_online' }
   | { type: 'recovery_requested'; by: 'client' | 'attacker' }
   | { type: 'recovery_refused'; reason: string }
   | { type: 'recovery_completed' }
   | { type: 'device_paired'; name?: string }
+  | { type: 'funded'; name?: string; to: string; usdc: string; eth: string; hash: string }
 
 export type FeedItem = WalletEvent & { id: string; at: number; source: 'service' | 'chain' | 'simulated' }
 

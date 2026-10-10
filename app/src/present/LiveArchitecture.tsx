@@ -18,6 +18,8 @@ function highlightFor(item: FeedItem): Highlight {
       if (key === 'AC') return { nodes: ['phone', 'kit'], edges: ['phone-kit'] }
       return { nodes: ['sq', 'kit'], edges: ['kit-sq'] }
     }
+    case 'funded':
+      return { nodes: ['sq', 'base'], edges: [] }
     case 'tx_broadcast':
       return item.chain === 'bitcoin' ? { nodes: ['phone', 'btc'], edges: ['phone-btc'] } : { nodes: ['phone', 'base'], edges: ['phone-base'] }
     case 'recovery_requested':

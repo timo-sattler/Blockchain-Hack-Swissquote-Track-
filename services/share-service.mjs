@@ -16,6 +16,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js'
 import { keccak_256 } from '@noble/hashes/sha3.js'
 import { p2wpkh, SigHash, TEST_NETWORK, Transaction, Address, OutScript } from '@scure/btc-signer'
 import { decodeFunctionData, erc20Abi, formatUnits, getAddress, hexToBytes, keccak256, parseTransaction, toHex } from 'viem'
+import { createTreasury } from './treasury.mjs'
 
 const PORT = Number(process.env.SHARE_PORT ?? 8790)
 const HUB_URL = process.env.HUB_URL ?? 'http://localhost:8787'
@@ -27,6 +28,7 @@ const USDC = '0x036cbd53842c5426634e7929541ec2318f3dcf7e'
 const SANCTIONED = new Set(['0x5a1e5a1e5a1e5a1e5a1e5a1e5a1e5a1e5a1e5a1e'])
 
 mkdirSync(join(DATA_DIR, 'wallets'), { recursive: true })
+const treasury = createTreasury(DATA_DIR, (event) => emit(event))
 
 // ---------- storage ----------
 
@@ -129,6 +131,16 @@ function btcIntent(wallet, psbtBase64, inputIndex) {
 
 const routes = {
   'GET /health': () => ({ ok: true }),
+
+  // Demo directory of all clients' wallets (names + public addresses) for the live network graph.
+  'GET /wallets': () =>
+    readdirSync(join(DATA_DIR, 'wallets'))
+      .map((file) => JSON.parse(readFileSync(join(DATA_DIR, 'wallets', file), 'utf8')))
+      .filter((w) => w.status === 'active' && w.name)
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .map((w) => ({ walletId: w.id, name: w.name, evmAddress: w.evmAddress, btcAddress: w.btcAddress, createdAt: w.createdAt })),
+
+  'GET /treasury': () => treasury.status(),
 
   // 1. A client starts creating a wallet: register the passkey that will authorise co-signing.
   'POST /wallets': async (req, params, body) => {
@@ -376,7 +388,10 @@ function keygenStep(sid, state, incoming, body) {
       if (state.kind === 'recover') wallet.recovery = { state: 'completed', completedAt: Date.now() }
       if (state.kind === 'pair') delete wallet.pairing
       saveWallet(wallet)
-      if (state.kind === 'create') emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
+      if (state.kind === 'create') {
+        emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
+        treasury.enqueue(wallet) // welcome bonus: test USDC + gas
+      }
       else if (state.kind === 'pair') emit({ type: 'device_paired', name: wallet.name })
       else emit({ type: 'recovery_completed' })
       console.log(`[share] ${state.kind} done for ${wallet.name ?? wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
@@ -457,4 +472,7 @@ createServer(async (req, res) => {
     else console.log(`[share] ${req.method} ${pathname} -> ${status}: ${error.message}`)
     res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: error.message }))
   }
-}).listen(PORT, () => console.log(`[share] Swissquote share service (MOCK) on http://localhost:${PORT}, storage ${DATA_DIR}`))
+}).listen(PORT, () => {
+  console.log(`[share] Swissquote share service (MOCK) on http://localhost:${PORT}, storage ${DATA_DIR}`)
+  console.log(`[treasury] welcome bonus account: ${treasury.address}`)
+})

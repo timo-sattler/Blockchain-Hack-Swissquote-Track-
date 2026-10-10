@@ -24,6 +24,8 @@ function describe(item: FeedItem): { icon: string; title: string; detail?: strin
         : { icon: '↺', title: 'Recovery requested: new phone + kit' }
     case 'recovery_refused':
       return { icon: '⛔', title: 'Recovery refused', detail: item.reason, tone: 'good' }
+    case 'funded':
+      return { icon: '🎁', title: `Welcome bonus${item.name ? ` for ${item.name}` : ''}`, detail: `${item.usdc} USDC + ${item.eth} ETH for gas from the Swissquote treasury`, tone: 'good' }
     case 'device_paired':
       return { icon: '⇄', title: `Device re-paired${item.name ? ` for ${item.name}` : ''}`, detail: 'Passkey + recovery kit issued a new phone share', tone: 'good' }
     case 'recovery_completed':
@@ -41,7 +43,8 @@ export function Feed({ items, compact = false }: { items: FeedItem[]; compact?: 
     <ul className={`feed ${compact ? 'compact' : ''}`}>
       {items.map((item) => {
         const d = describe(item)
-        const link = item.type === 'tx_broadcast' && item.hash !== 'simulated' ? explorerUrl(item.chain, item.hash) : null
+        const link =
+          item.type === 'tx_broadcast' && item.hash !== 'simulated' ? explorerUrl(item.chain, item.hash) : item.type === 'funded' ? explorerUrl('base', item.hash) : null
         return (
           <li key={item.id} className={d.tone ?? ''}>
             <span className="feed-icon">{d.icon}</span>

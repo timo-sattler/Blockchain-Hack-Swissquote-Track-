@@ -31,6 +31,15 @@ Environment variables:
 
 Reset the presentation feed: `curl -X POST http://localhost:8787/reset`.
 
+## Welcome bonus (treasury, mock)
+
+Every new wallet automatically gets test funds from a Swissquote treasury account on Base Sepolia (`treasury.mjs`): by default **20 USDC + 0.0005 ETH** for gas. In production this would be Swissquote sponsoring its clients' gas, not a cash gift.
+
+- On first start the share service creates the treasury key in its own storage (`data/share-service/treasury-key.json`, git-ignored) and prints the treasury address. Or set `TREASURY_PRIVATE_KEY`.
+- **Fund the treasury** from faucets: test USDC at https://faucet.circle.com (Base Sepolia), ETH from a Base Sepolia faucet. `GET /treasury` shows its balance and how many wallets it can still fund.
+- If the treasury runs low it sends gas only, or nothing, and logs a warning. The wallet still works; the client can use **Add funds**.
+- Amounts: `STARTER_USDC`, `STARTER_ETH`.
+
 ## Share service API
 
 | Method + path | Purpose |
@@ -43,10 +52,12 @@ Reset the presentation feed: `curl -X POST http://localhost:8787/reset`.
 | `POST /wallets/:id/recovery/request` | Mock re-KYC; refuses a non-matching selfie, otherwise starts the delay |
 | `POST /wallets/:id/passkey/options` | New passkey registration once the delay is over |
 | `GET /wallets/:id`, `GET /health` | Public wallet info, liveness |
+| `GET /wallets` | Demo directory: names + public addresses of all wallets (for the live network graph) |
+| `GET /treasury` | Treasury address, balances, wallets it can still fund |
 
 ## Event format (hub)
 
-`POST /events` with one JSON object; `GET /events` streams them. Types: `wallet_created`, `signing` (`parties: ["A","B"]` or `["A","C"]`), `tx_broadcast`, `service_offline`, `service_online`, `recovery_requested` (`by: client|attacker`), `recovery_refused`, `recovery_completed`. A = phone, B = Swissquote, C = recovery kit.
+`POST /events` with one JSON object; `GET /events` streams them. Types: `wallet_created`, `funded`, `device_paired`, `signing` (`parties: ["A","B"]` or `["A","C"]`), `tx_broadcast`, `service_offline`, `service_online`, `recovery_requested` (`by: client|attacker`), `recovery_refused`, `recovery_completed`. A = phone, B = Swissquote, C = recovery kit.
 
 ## License notice
 
