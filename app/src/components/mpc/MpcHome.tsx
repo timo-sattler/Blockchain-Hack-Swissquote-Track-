@@ -85,7 +85,7 @@ export function MpcHome({ wallet, kitSavedAt, onToast, onForget }: { wallet: Pho
             {short(wallet.evmAddress)} <Copy />
           </button>
         </div>
-        <p className="balance-label">USDC balance</p>
+        <p className="balance-label">{wallet.name ? `${wallet.name.split(' ')[0]}’s wallet · USDC` : 'USDC balance'}</p>
         <p className="balance">
           <span className="currency">$</span>
           {whole}

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { BTC_EXPLORER, EXPLORER } from '../../config'
 import { ServiceError } from '../../mpc/api'
 import type { Asset } from '../../mpc/chains'
-import { send, type SendStage } from '../../mpc/flows'
+import { describePasskeyError, send, type SendStage } from '../../mpc/flows'
 import type { Kit } from '../../mpc/kit'
 import type { PhoneWallet } from '../../mpc/store'
 import { Confetti } from '../Confetti'
@@ -37,10 +37,9 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
       onSent(transfer)
       setStep({ name: 'success', transfer })
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
       const swissquoteDown = e instanceof ServiceError && (e.status === 0 || e.status >= 500)
       const needsConfirm = e instanceof ServiceError && e.status === 428
-      setStep({ name: 'error', message: /NotAllowed|cancel/i.test(message) ? 'Passkey prompt was cancelled.' : message, swissquoteDown, needsConfirm })
+      setStep({ name: 'error', message: describePasskeyError(e), swissquoteDown, needsConfirm })
     }
   }
 

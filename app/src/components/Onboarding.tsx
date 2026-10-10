@@ -1,20 +1,45 @@
+import { useState, type FormEvent } from 'react'
 import { Fingerprint, Shield, Users } from './icons'
 
+const NAME_KEY = 'sq-mpc:last-name'
+
+function lastName() {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 export function Onboarding({
-  clientName,
   busy,
   progress,
   error,
   onCreate,
+  onLogin,
   onRecover,
 }: {
-  clientName: string
   busy: boolean
   progress?: string
   error?: string
-  onCreate: () => void
+  onCreate: (name: string) => void
+  onLogin: () => void
   onRecover: () => void
 }) {
+  const [name, setName] = useState(lastName)
+  const trimmed = name.trim()
+
+  function submit(event: FormEvent) {
+    event.preventDefault()
+    if (trimmed.length < 2) return
+    try {
+      localStorage.setItem(NAME_KEY, trimmed)
+    } catch {
+      // Only a convenience for the next visit.
+    }
+    onCreate(trimmed)
+  }
+
   return (
     <section className="onboarding">
       <div className={`orb ${busy ? 'busy' : ''}`}>
@@ -22,7 +47,7 @@ export function Onboarding({
         <span className="ring delay" />
         <Fingerprint width="56" height="56" strokeWidth="1.4" />
       </div>
-      <p className="eyebrow">Hi {clientName.split(' ')[0]} 👋</p>
+      <p className="eyebrow">{trimmed ? `Hi ${trimmed.split(' ')[0]} 👋` : 'Welcome 👋'}</p>
       <h1>
         Your keys.
         <br />
@@ -60,12 +85,27 @@ export function Onboarding({
         </li>
       </ul>
 
-      <button className="primary big" onClick={onCreate} disabled={busy}>
-        {busy ? (progress ?? 'Working…') : 'Create my wallet'}
-      </button>
+      <form className="create-form" onSubmit={submit}>
+        <label className="field">
+          Your name
+          <div className="input-row">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Anna Muster" autoComplete="name" maxLength={60} disabled={busy} />
+          </div>
+        </label>
+        <button className="primary big" disabled={busy || trimmed.length < 2}>
+          {busy ? (progress ?? 'Working…') : 'Create my wallet'}
+        </button>
+      </form>
       {error && <p className="error center">{error}</p>}
+
+      <div className="divider">
+        <span>Already have a wallet?</span>
+      </div>
+      <button className="secondary big with-icon" onClick={onLogin} disabled={busy}>
+        <Fingerprint /> Log in with my passkey
+      </button>
       <button className="text-btn" onClick={onRecover} disabled={busy}>
-        Lost your phone? Recover with your kit
+        Lost your phone and passkey? Recover with your kit
       </button>
     </section>
   )

@@ -2,7 +2,7 @@
 // Holds Share B in its own storage, never sends it out, and only co-signs transactions it has
 // decoded and checked itself. Runs as a separate process, as the challenge requires.
 import { createServer } from 'node:http'
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { KeygenSession, Keyshare, Message, SignSession } from '@silencelaboratories/dkls-wasm-ll-node'
@@ -131,20 +131,43 @@ const routes = {
   'GET /health': () => ({ ok: true }),
 
   // 1. A client starts creating a wallet: register the passkey that will authorise co-signing.
-  'POST /wallets': async (req) => {
+  'POST /wallets': async (req, params, body) => {
     const { rpID } = originOf(req)
+    const name = String(body.name ?? '').trim()
+    if (name.length < 2 || name.length > 60) throw new HttpError(400, 'Please enter your name (2–60 characters).')
     const id = randomUUID()
-    const options = await generateRegistrationOptions({
-      rpName: 'Swissquote Wallet',
-      rpID,
-      userName: 'Anna Muster (Swissquote client)',
-      attestationType: 'none',
-      supportedAlgorithmIDs: [-7],
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
-    })
+    const options = await registrationOptions(rpID, name)
     challenges.set(id, options.challenge)
-    saveWallet({ id, clientId: 'CH-1048-2231', createdAt: Date.now(), status: 'registering' })
+    saveWallet({ id, name, clientId: 'CH-1048-2231', createdAt: Date.now(), status: 'registering' })
     return { walletId: id, options }
+  },
+
+  // Log in with an existing passkey: no wallet id needed, the browser offers the passkeys it has for this site.
+  'POST /login/options': async (req) => {
+    const { rpID } = originOf(req)
+    const options = await generateAuthenticationOptions({ rpID, userVerification: 'required' })
+    const challengeId = randomUUID()
+    challenges.set(challengeId, options.challenge)
+    return { challengeId, options }
+  },
+
+  'POST /login': async (req, params, body) => {
+    const wallet = findWalletByCredential(body.response?.id)
+    if (!wallet) throw new HttpError(404, 'This passkey does not belong to any wallet on this server. Create a new wallet instead.')
+    const token = await verifyLogin(req, wallet, body.response, challenges.get(body.challengeId))
+    challenges.delete(body.challengeId)
+    return { token, ...publicView(wallet) }
+  },
+
+  // A logged-in client on a device without Share A: passkey + recovery kit re-issue the phone share at once.
+  'POST /wallets/:id/pair': (req, { id }, body) => {
+    const wallet = mustWallet(id)
+    if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
+    requireToken(id, body.token)
+    wallet.pairing = { expires: Date.now() + 5 * 60_000 }
+    saveWallet(wallet)
+    console.log(`[share] re-pairing a device for ${wallet.name ?? id}: passkey verified, waiting for the kit`)
+    return { ok: true }
   },
 
   'POST /wallets/:id/passkey': async (req, { id }, body) => {
@@ -172,14 +195,7 @@ const routes = {
     const wallet = mustWallet(id)
     if (wallet.recovery?.state !== 'ready') throw new HttpError(403, 'no approved recovery')
     const { rpID } = originOf(req)
-    const options = await generateRegistrationOptions({
-      rpName: 'Swissquote Wallet',
-      rpID,
-      userName: 'Anna Muster (Swissquote client)',
-      attestationType: 'none',
-      supportedAlgorithmIDs: [-7],
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
-    })
+    const options = await registrationOptions(rpID, wallet.name ?? 'Swissquote client')
     challenges.set(id, options.challenge)
     return { options }
   },
@@ -194,6 +210,9 @@ const routes = {
       session = new KeygenSession(3, 2, 1)
     } else if (wallet.recovery?.state === 'ready' && wallet.recovery.passkeyReplaced) {
       kind = 'recover'
+      session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
+    } else if (wallet.pairing && wallet.pairing.expires > Date.now()) {
+      kind = 'pair'
       session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
     } else {
       throw new HttpError(409, 'wallet is not ready for key generation')
@@ -229,21 +248,7 @@ const routes = {
 
   'POST /wallets/:id/login': async (req, { id }, body) => {
     const wallet = mustWallet(id)
-    const { origin, rpID } = originOf(req)
-    const result = await verifyAuthenticationResponse({
-      response: body.response,
-      expectedChallenge: challenges.get(id),
-      expectedOrigin: origin,
-      expectedRPID: rpID,
-      credential: { id: wallet.credential.id, publicKey: unb64(wallet.credential.publicKey), counter: wallet.credential.counter },
-      requireUserVerification: true,
-    })
-    if (!result.verified) throw new HttpError(401, 'passkey check failed')
-    wallet.credential.counter = result.authenticationInfo.newCounter
-    saveWallet(wallet)
-    const token = randomUUID()
-    tokens.set(token, { walletId: id, expires: Date.now() + 5 * 60_000 })
-    return { token }
+    return { token: await verifyLogin(req, wallet, body.response, challenges.get(id)) }
   },
 
   // 4. Co-sign: decode the transaction, apply policy, then run the signing protocol on our own hash.
@@ -290,9 +295,52 @@ function mustWallet(id) {
   return wallet
 }
 
+async function registrationOptions(rpID, name) {
+  return generateRegistrationOptions({
+    rpName: 'Swissquote Wallet',
+    rpID,
+    userName: name,
+    userDisplayName: name,
+    attestationType: 'none',
+    supportedAlgorithmIDs: [-7],
+    // Discoverable, so the client can later log in without typing anything.
+    authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+  })
+}
+
+function findWalletByCredential(credentialId) {
+  if (!credentialId) return null
+  for (const file of readdirSync(join(DATA_DIR, 'wallets'))) {
+    const wallet = JSON.parse(readFileSync(join(DATA_DIR, 'wallets', file), 'utf8'))
+    if (wallet.credential?.id === credentialId) return mustWallet(wallet.id)
+  }
+  return null
+}
+
+async function verifyLogin(req, wallet, response, expectedChallenge) {
+  if (!wallet.credential) throw new HttpError(409, 'no passkey registered')
+  if (!expectedChallenge) throw new HttpError(400, 'login expired, please try again')
+  const { origin, rpID } = originOf(req)
+  const result = await verifyAuthenticationResponse({
+    response,
+    expectedChallenge,
+    expectedOrigin: origin,
+    expectedRPID: rpID,
+    credential: { id: wallet.credential.id, publicKey: unb64(wallet.credential.publicKey), counter: wallet.credential.counter },
+    requireUserVerification: true,
+  })
+  if (!result.verified) throw new HttpError(401, 'passkey check failed')
+  wallet.credential.counter = result.authenticationInfo.newCounter
+  saveWallet(wallet)
+  const token = randomUUID()
+  tokens.set(token, { walletId: wallet.id, expires: Date.now() + 5 * 60_000 })
+  return token
+}
+
 function publicView(wallet) {
   return {
     walletId: wallet.id,
+    name: wallet.name ?? null,
     status: wallet.status,
     btcAddress: wallet.btcAddress,
     evmAddress: wallet.evmAddress,
@@ -317,7 +365,7 @@ function keygenStep(sid, state, incoming, body) {
       const share = session.keyshare()
       const wallet = loadWallet(state.walletId)
       const publicKey = share.publicKey
-      if (state.kind === 'recover' && b64(publicKey) !== wallet.publicKey) throw new HttpError(500, 'recovery produced a different key')
+      if (state.kind !== 'create' && b64(publicKey) !== wallet.publicKey) throw new HttpError(500, 'recovery produced a different key')
       Object.assign(wallet, {
         shareB: b64(share.toBytes()),
         publicKey: b64(publicKey),
@@ -326,10 +374,12 @@ function keygenStep(sid, state, incoming, body) {
         status: 'active',
       })
       if (state.kind === 'recover') wallet.recovery = { state: 'completed', completedAt: Date.now() }
+      if (state.kind === 'pair') delete wallet.pairing
       saveWallet(wallet)
-      if (state.kind === 'create') emit({ type: 'wallet_created', btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
+      if (state.kind === 'create') emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
+      else if (state.kind === 'pair') emit({ type: 'device_paired', name: wallet.name })
       else emit({ type: 'recovery_completed' })
-      console.log(`[share] ${state.kind === 'create' ? 'created' : 'recovered'} wallet ${wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
+      console.log(`[share] ${state.kind} done for ${wallet.name ?? wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
       return { publicKey: b64(publicKey), ...publicView(wallet) }
     }
     default:
@@ -404,6 +454,7 @@ createServer(async (req, res) => {
   } catch (error) {
     const status = error instanceof HttpError ? error.status : 500
     if (status === 500) console.error('[share]', error)
+    else console.log(`[share] ${req.method} ${pathname} -> ${status}: ${error.message}`)
     res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify({ error: error.message }))
   }
 }).listen(PORT, () => console.log(`[share] Swissquote share service (MOCK) on http://localhost:${PORT}, storage ${DATA_DIR}`))

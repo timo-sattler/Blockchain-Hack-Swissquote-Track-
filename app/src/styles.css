@@ -1161,6 +1161,54 @@ button.option:active {
 
 /* ---------- MPC wallet ---------- */
 
+.create-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+}
+
+.create-form .input-row input {
+  font-family: inherit;
+}
+
+.secondary {
+  width: 100%;
+  border: 1.5px solid var(--accent);
+  border-radius: 14px;
+  padding: 14px 18px;
+  font-weight: 650;
+  background: transparent;
+  color: var(--accent);
+}
+
+.secondary.big {
+  padding: 15px 18px;
+  font-size: 16px;
+}
+
+.secondary:disabled {
+  opacity: 0.45;
+}
+
+.divider {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .segmented.three {
   grid-template-columns: repeat(3, 1fr);
 }

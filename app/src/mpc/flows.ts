@@ -22,15 +22,15 @@ export function addressesFor(publicKey: Uint8Array) {
 export type CreateStage = 'passkey' | 'shares' | 'done'
 
 /** Passkey registration with Swissquote, then distributed key generation of Shares A, B and C. */
-export async function createWallet(onStage: (stage: CreateStage, step?: number) => void) {
+export async function createWallet(name: string, onStage: (stage: CreateStage, step?: number) => void) {
   onStage('passkey')
-  const { walletId, options } = await shareService<{ walletId: string; options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>('/wallets')
+  const { walletId, options } = await shareService<{ walletId: string; options: Parameters<typeof startRegistration>[0]['optionsJSON'] }>('/wallets', { name })
   const response = await startRegistration({ optionsJSON: options })
   await shareService(`/wallets/${walletId}/passkey`, { response })
 
   onStage('shares', 0)
   const shares = await createShares(walletId, (step) => onStage('shares', step))
-  const wallet: PhoneWallet = { walletId, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
+  const wallet: PhoneWallet = { walletId, name, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
   savePhoneWallet(wallet)
   onStage('done')
   const kit: Kit = { walletId, publicKey: shares.publicKey, share: shares.kit, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress }
@@ -89,6 +89,45 @@ export async function send(wallet: PhoneWallet, req: SendRequest, onStage: (stag
 }
 
 
+// ---------- log in with an existing passkey ----------
+
+export type LoginResult = { walletId: string; name: string | null; btcAddress: string; evmAddress: string; token: string }
+
+/** The browser offers the passkeys it already has for this site; the share service finds the wallet. */
+export async function loginWithPasskey(): Promise<LoginResult> {
+  const { challengeId, options } = await shareService<{ challengeId: string; options: Parameters<typeof startAuthentication>[0]['optionsJSON'] }>('/login/options')
+  const response = await startAuthentication({ optionsJSON: options })
+  const result = await shareService<LoginResult>('/login', { challengeId, response })
+  session = { walletId: result.walletId, token: result.token, expires: Date.now() + 4 * 60_000 }
+  return result
+}
+
+/**
+ * Logged in on a device without Share A (new browser, cleared data): passkey + recovery kit let
+ * Swissquote and the kit issue a new phone share right away. Returns the new kit to save.
+ */
+export async function pairDevice(login: LoginResult, kit: Kit, onStep?: (step: number) => void) {
+  if (kit.walletId !== login.walletId) throw new Error('This recovery kit belongs to a different wallet.')
+  await shareService(`/wallets/${login.walletId}/pair`, { token: login.token })
+  const shares = await recoverShares(kit.walletId, kit.share, kit.publicKey, onStep)
+  const wallet: PhoneWallet = { walletId: kit.walletId, name: login.name ?? undefined, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
+  savePhoneWallet(wallet)
+  return { wallet, kit: { ...kit, share: shares.kit } }
+}
+
+/** Turns WebAuthn errors into something a user can act on. */
+export function describePasskeyError(error: unknown): string {
+  const name = error instanceof Error ? error.name : ''
+  const message = error instanceof Error ? error.message : String(error)
+  if (name === 'NotAllowedError' || /NotAllowed|cancel|timed out/i.test(message))
+    return 'The passkey prompt was cancelled or timed out. Try again and confirm with Windows Hello, Face ID or your fingerprint.'
+  if (name === 'SecurityError' || /secure context|SecurityError|invalid domain/i.test(message))
+    return 'Passkeys only work on https:// or http://localhost. Open the app at http://localhost:5173 (not an IP address).'
+  if (name === 'InvalidStateError') return 'This device already has a passkey for this wallet. Use “Log in with my passkey”.'
+  if (name === 'NotSupportedError') return 'This browser or device does not support passkeys. Try Chrome, Edge or Safari.'
+  return message
+}
+
 // ---------- recovery ----------
 
 export type RecoveryStatus = { state: 'pending' | 'ready' | 'completed'; readyAt?: number } | null
@@ -109,7 +148,8 @@ export async function completeRecovery(kit: Kit, onStep?: (step: number) => void
   const response = await startRegistration({ optionsJSON: options })
   await shareService(`/wallets/${kit.walletId}/passkey`, { response })
   const shares = await recoverShares(kit.walletId, kit.share, kit.publicKey, onStep)
-  const wallet: PhoneWallet = { walletId: kit.walletId, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
+  const { name } = await shareGet<{ name: string | null }>(`/wallets/${kit.walletId}`)
+  const wallet: PhoneWallet = { walletId: kit.walletId, name: name ?? undefined, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
   savePhoneWallet(wallet)
   session = null
   const newKit: Kit = { ...kit, share: shares.kit }

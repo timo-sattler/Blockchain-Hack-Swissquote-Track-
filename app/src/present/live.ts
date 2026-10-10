@@ -12,7 +12,7 @@ export type Chain = 'bitcoin' | 'base'
  * The service emits exactly these JSON objects, one per `data:` line.
  */
 export type WalletEvent =
-  | { type: 'wallet_created'; btcAddress: string; evmAddress: string }
+  | { type: 'wallet_created'; btcAddress: string; evmAddress: string; name?: string }
   | { type: 'signing'; parties: Party[] }
   | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string }
   | { type: 'service_offline' }
@@ -20,6 +20,7 @@ export type WalletEvent =
   | { type: 'recovery_requested'; by: 'client' | 'attacker' }
   | { type: 'recovery_refused'; reason: string }
   | { type: 'recovery_completed' }
+  | { type: 'device_paired'; name?: string }
 
 export type FeedItem = WalletEvent & { id: string; at: number; source: 'service' | 'chain' | 'simulated' }
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { MpcWallet } from '../components/mpc/MpcWallet'
 import { Sheet } from '../components/Sheet'
 import { loadPhoneWallet } from '../mpc/store'
-import { CLIENT, CUSTODIED_CRYPTO, formatChf } from './mockData'
+import { CUSTODIED_CRYPTO, formatChf } from './mockData'
 import { SqHeader } from './SqHeader'
 
 export function CryptoTab({ onToast }: { onToast: (message: string) => void }) {
@@ -51,7 +51,7 @@ export function CryptoTab({ onToast }: { onToast: (message: string) => void }) {
       <p className="sq-section-sub">Your keys, split into three shares. Swissquote cannot move these funds.</p>
 
       <div className="sq-wallet">
-        <MpcWallet clientName={CLIENT.name} onToast={onToast} />
+        <MpcWallet onToast={onToast} />
       </div>
 
       {moving && <MoveSheet address={loadPhoneWallet()?.evmAddress ?? null} onClose={() => setMoving(false)} />}

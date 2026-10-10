@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ServiceError } from '../../mpc/api'
-import { completeRecovery, recoveryStatus, requestRecovery } from '../../mpc/flows'
+import { completeRecovery, describePasskeyError, recoveryStatus, requestRecovery } from '../../mpc/flows'
 import type { Kit } from '../../mpc/kit'
 import type { PhoneWallet } from '../../mpc/store'
 import { Fingerprint, Spinner } from '../icons'
@@ -50,8 +50,7 @@ export function RecoverySheet({ onClose, onRecovered }: { onClose: () => void; o
       const result = await completeRecovery(kit, (s) => setStep({ name: 'restoring', kit, step: s }))
       setStep({ name: 'backup', kit: result.kit, wallet: result.wallet })
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      setStep({ name: 'error', message: /NotAllowed|cancel/i.test(message) ? 'Passkey prompt was cancelled.' : message })
+      setStep({ name: 'error', message: describePasskeyError(e) })
     }
   }
 

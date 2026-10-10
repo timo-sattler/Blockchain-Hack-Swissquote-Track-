@@ -3,7 +3,7 @@
 // passkey (WebAuthn PRF) or keeps it in the platform keychain.
 import { fromB64, toB64 } from './bytes'
 
-export type PhoneWallet = { walletId: string; share: Uint8Array; publicKey: Uint8Array; btcAddress: string; evmAddress: string }
+export type PhoneWallet = { walletId: string; name?: string; share: Uint8Array; publicKey: Uint8Array; btcAddress: string; evmAddress: string }
 
 const KEY = 'sq-mpc:wallet'
 

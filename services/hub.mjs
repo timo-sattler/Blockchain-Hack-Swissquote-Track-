@@ -15,6 +15,7 @@ const TYPES = new Set([
   'recovery_requested',
   'recovery_refused',
   'recovery_completed',
+  'device_paired',
 ])
 
 const clients = new Set()

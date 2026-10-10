@@ -5,7 +5,7 @@ const short = (value: string) => (value.length > 14 ? `${value.slice(0, 8)}…${
 function describe(item: FeedItem): { icon: string; title: string; detail?: string; tone?: 'good' | 'bad' } {
   switch (item.type) {
     case 'wallet_created':
-      return { icon: '✦', title: 'Wallet created: 3 key shares generated', detail: `BTC ${short(item.btcAddress)} · EVM ${short(item.evmAddress)}`, tone: 'good' }
+      return { icon: '✦', title: `Wallet created${item.name ? ` for ${item.name}` : ''}: 3 key shares`, detail: `BTC ${short(item.btcAddress)} · EVM ${short(item.evmAddress)}`, tone: 'good' }
     case 'signing': {
       const key = [...item.parties].sort().join('')
       if (key === 'AB') return { icon: '✍', title: 'Phone + Swissquote co-signed' }
@@ -24,6 +24,8 @@ function describe(item: FeedItem): { icon: string; title: string; detail?: strin
         : { icon: '↺', title: 'Recovery requested: new phone + kit' }
     case 'recovery_refused':
       return { icon: '⛔', title: 'Recovery refused', detail: item.reason, tone: 'good' }
+    case 'device_paired':
+      return { icon: '⇄', title: `Device re-paired${item.name ? ` for ${item.name}` : ''}`, detail: 'Passkey + recovery kit issued a new phone share', tone: 'good' }
     case 'recovery_completed':
       return { icon: '✓', title: 'Recovery complete', detail: 'New phone share, same addresses', tone: 'good' }
   }

@@ -25,6 +25,7 @@ function highlightFor(item: FeedItem): Highlight {
     case 'recovery_refused':
       return { nodes: ['notify'], edges: [], alert: ['kyc', 'sq'] }
     case 'recovery_completed':
+    case 'device_paired':
       return { nodes: ['phone', 'sq', 'kit', 'notify'], edges: ['kit-sq', 'phone-kit', 'sq-mocks'] }
     default:
       return { nodes: [], edges: [] }
