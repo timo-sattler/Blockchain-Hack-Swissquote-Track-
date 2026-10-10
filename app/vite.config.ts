@@ -15,7 +15,7 @@ export default defineConfig({
   build: {
     rollupOptions: {
       // Two pages: the wallet app and the live presentation (/present).
-      input: { main: 'index.html', present: 'present.html' },
+      input: { main: 'index.html', present: 'present.html', concept: 'concept.html' },
     },
   },
 })
