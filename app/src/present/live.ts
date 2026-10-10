@@ -18,6 +18,7 @@ export type WalletEvent =
   | { type: 'recovery_refused'; reason: string; name?: string; evm?: string }
   | { type: 'recovery_completed'; name?: string; evm?: string }
   | { type: 'device_paired'; name?: string; evm?: string }
+  | { type: 'pairing_requested'; name?: string; evm?: string }
   | { type: 'funded'; name?: string; to: string; usdc: string; eth: string; hash: string }
 
 /** `service` = reported by the hub, `chain` = found directly on the blockchain. */

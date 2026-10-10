@@ -114,6 +114,10 @@ export function NetworkGraph({ items, members: allMembers, treasury }: { items: 
       const m = memberOf(item.evm)
       if (m) activity.set(m.walletId, { kind: 'attack', label: 'Attack refused' })
     }
+    if (item.type === 'pairing_requested') {
+      const m = memberOf(item.evm)
+      if (m) activity.set(m.walletId, { kind: 'recovered', label: 'New device · waiting (alerts sent)' })
+    }
     if (item.type === 'recovery_completed' || item.type === 'device_paired') {
       const m = memberOf(item.evm)
       if (m) activity.set(m.walletId, { kind: 'recovered', label: 'New Share A issued (B + C)' })

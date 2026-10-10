@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ServiceError } from '../../mpc/api'
-import { createWallet, describePasskeyError, loginWithPasskey, pairDevice, type CreateStage, type LoginResult } from '../../mpc/flows'
+import { completePairing, createWallet, describePasskeyError, loginWithPasskey, requestPairing, type CreateStage, type LoginResult } from '../../mpc/flows'
 import type { Kit } from '../../mpc/kit'
 import { forgetPhoneWallet, loadPhoneWallet, savePhoneWallet, type PhoneWallet } from '../../mpc/store'
 import { Spinner } from '../icons'
@@ -41,6 +41,14 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
   const [recovering, setRecovering] = useState(false)
   const [pairing, setPairing] = useState<LoginResult | null>(null)
   const [pairStep, setPairStep] = useState<number | null>(null)
+  const [pairReadyAt, setPairReadyAt] = useState<number | null>(null)
+  const [now, setNow] = useState(Date.now())
+
+  useEffect(() => {
+    if (!pairReadyAt) return
+    const timer = window.setInterval(() => setNow(Date.now()), 500)
+    return () => window.clearInterval(timer)
+  }, [pairReadyAt])
 
   function markKitSaved(walletId: string) {
     const at = Date.now()
@@ -92,10 +100,15 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
   }
 
   async function pair(login: LoginResult, kit: Kit) {
-    setPairStep(0)
     setError('')
     try {
-      const result = await pairDevice(login, kit, setPairStep)
+      // Safety delay first: the other devices are alerted and the request can be noticed.
+      const readyAt = await requestPairing(login, kit)
+      setPairReadyAt(readyAt)
+      await new Promise((resolve) => window.setTimeout(resolve, Math.max(0, readyAt - Date.now()) + 300))
+      setPairReadyAt(null)
+      setPairStep(0)
+      const result = await completePairing(login, kit, setPairStep)
       setPairing(null)
       setWallet(result.wallet)
       setPendingKit({ kit: result.kit, title: 'Save your updated recovery kit' })
@@ -103,6 +116,7 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
       setError(explain(e))
     } finally {
       setPairStep(null)
+      setPairReadyAt(null)
     }
   }
 
@@ -117,6 +131,7 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
         <KitBackup
           kit={pendingKit.kit}
           title={pendingKit.title}
+          replacesOldKit={pendingKit.title !== 'Save your recovery kit'}
           onSaved={() => {
             markKitSaved(pendingKit.kit.walletId)
             setPendingKit(null)
@@ -151,7 +166,13 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
           Welcome back{pairing.name ? `, ${pairing.name.split(' ')[0]}` : ''}. This browser does not hold your phone share yet. Load your recovery kit:
           together with your passkey, Swissquote and the kit issue a new phone share for this device. Your addresses stay the same.
         </p>
-        {pairStep === null ? (
+        {pairReadyAt ? (
+          <div className="review center">
+            <p className="muted small">Safety delay: your other devices have been alerted and can still stop this.</p>
+            <p className="countdown">{Math.max(0, Math.ceil((pairReadyAt - now) / 1000))}s</p>
+            <p className="muted small">Demo delay. In production: 24 hours.</p>
+          </div>
+        ) : pairStep === null ? (
           <KitPicker submitLabel="Connect this device" onUnlocked={(kit) => pair(pairing, kit)} />
         ) : (
           <p className="loading-line">

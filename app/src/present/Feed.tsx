@@ -27,6 +27,8 @@ function describe(item: FeedItem): { icon: string; title: string; detail?: strin
       return { icon: '⛔', title: `Recovery refused${item.name ? ` for ${item.name}` : ''}`, detail: item.reason, tone: 'good' }
     case 'funded':
       return { icon: '🎁', title: `Welcome bonus${item.name ? ` for ${item.name}` : ''}`, detail: `${item.usdc} USDC + ${item.eth} ETH for gas from the Swissquote treasury`, tone: 'good' }
+    case 'pairing_requested':
+      return { icon: '⏳', title: `New device requested${item.name ? ` for ${item.name}` : ''}`, detail: 'Passkey + kit · safety delay, other devices alerted' }
     case 'device_paired':
       return { icon: '⇄', title: `Device re-paired${item.name ? ` for ${item.name}` : ''}`, detail: 'Passkey + recovery kit issued a new phone share', tone: 'good' }
     case 'recovery_completed':

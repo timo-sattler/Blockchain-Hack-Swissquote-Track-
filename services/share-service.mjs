@@ -22,6 +22,7 @@ const PORT = Number(process.env.SHARE_PORT ?? 8790)
 const HUB_URL = process.env.HUB_URL ?? 'http://localhost:8787'
 const DATA_DIR = process.env.DATA_DIR ?? join(import.meta.dirname, 'data', 'share-service')
 const RECOVERY_DELAY_MS = Number(process.env.RECOVERY_DELAY_SEC ?? 30) * 1000 // production: 48 h
+const PAIRING_DELAY_MS = Number(process.env.PAIRING_DELAY_SEC ?? 10) * 1000 // production: e.g. 24 h
 const HIGH_VALUE_USDC = 1000
 const USDC = '0x036cbd53842c5426634e7929541ec2318f3dcf7e'
 // Clearly fake addresses standing in for a sanctions list (mock compliance provider).
@@ -172,14 +173,18 @@ const routes = {
   },
 
   // A logged-in client on a device without Share A: passkey + recovery kit re-issue the phone share at once.
+  // Not immediate: if passkey and kit sit in the same cloud account, that account alone must not be
+  // enough. A safety delay with alerts to the client's other devices comes first.
   'POST /wallets/:id/pair': (req, { id }, body) => {
     const wallet = mustWallet(id)
     if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
     requireToken(id, body.token)
-    wallet.pairing = { expires: Date.now() + 5 * 60_000 }
+    const readyAt = Date.now() + PAIRING_DELAY_MS
+    wallet.pairing = { readyAt, expires: readyAt + 10 * 60_000 }
     saveWallet(wallet)
-    console.log(`[share] re-pairing a device for ${wallet.name ?? id}: passkey verified, waiting for the kit`)
-    return { ok: true }
+    emit({ type: 'pairing_requested', name: wallet.name, evm: wallet.evmAddress })
+    console.log(`[share] new device for ${wallet.name ?? id}: passkey verified, ready in ${PAIRING_DELAY_MS / 1000}s; alerts sent to the other devices (mock)`)
+    return { readyAt }
   },
 
   'POST /wallets/:id/passkey': async (req, { id }, body) => {
@@ -223,7 +228,7 @@ const routes = {
     } else if (wallet.recovery?.state === 'ready' && wallet.recovery.passkeyReplaced) {
       kind = 'recover'
       session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
-    } else if (wallet.pairing && wallet.pairing.expires > Date.now()) {
+    } else if (wallet.pairing && wallet.pairing.readyAt <= Date.now() && wallet.pairing.expires > Date.now()) {
       kind = 'pair'
       session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
     } else {
@@ -404,6 +409,12 @@ function keygenStep(sid, state, incoming, body) {
 
 function signStep(sid, state, incoming) {
   const { session } = state
+  // Everyday co-signing is phone (party 0) + Swissquote only. Swissquote never signs together with the
+  // recovery kit (party 2): someone holding just the kit must go through re-KYC, the delay and alerts.
+  if (incoming.some((m) => m.from_id !== 0)) {
+    sessions.delete(sid)
+    throw new HttpError(403, 'Swissquote only co-signs with the phone share (A), never with the recovery kit')
+  }
   switch (state.stage++) {
     case 1:
       return { messages: session.handleMessages(incoming).map(toWire) }

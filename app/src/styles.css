@@ -1255,6 +1255,16 @@ button.option:active {
   margin-top: 14px;
 }
 
+.notice.warn {
+  margin: 0 0 12px;
+  background: #fdecea;
+  color: var(--text);
+}
+
+.kit-backup .muted.small + .muted.small {
+  margin-top: 8px;
+}
+
 .notice.small {
   margin-top: 0;
   font-size: 13px;

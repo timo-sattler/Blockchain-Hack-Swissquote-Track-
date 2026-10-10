@@ -111,12 +111,18 @@ export async function loginWithPasskey(): Promise<LoginResult> {
 }
 
 /**
- * Logged in on a device without Share A (new browser, cleared data): passkey + recovery kit let
- * Swissquote and the kit issue a new phone share right away. Returns the new kit to save.
+ * Logged in on a device without Share A (new browser, cleared data). Step 1: ask Swissquote to issue
+ * a new phone share. It answers with a safety delay and alerts the client's other devices, so a
+ * hacked cloud account holding both passkey and kit is not enough for an instant takeover.
  */
-export async function pairDevice(login: LoginResult, kit: Kit, onStep?: (step: number) => void) {
+export async function requestPairing(login: LoginResult, kit: Kit) {
   if (kit.walletId !== login.walletId) throw new Error('This recovery kit belongs to a different wallet.')
-  await shareService(`/wallets/${login.walletId}/pair`, { token: login.token })
+  const { readyAt } = await shareService<{ readyAt: number }>(`/wallets/${login.walletId}/pair`, { token: login.token })
+  return readyAt
+}
+
+/** Step 2, after the delay: the kit and Swissquote issue the new phone share. Returns the new kit to save. */
+export async function completePairing(login: LoginResult, kit: Kit, onStep?: (step: number) => void) {
   const shares = await recoverShares(kit.walletId, kit.share, kit.publicKey, onStep)
   const wallet: PhoneWallet = { walletId: kit.walletId, name: login.name ?? undefined, share: shares.phone, publicKey: shares.publicKey, ...addressesFor(shares.publicKey) }
   savePhoneWallet(wallet)

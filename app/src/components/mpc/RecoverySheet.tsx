@@ -134,6 +134,7 @@ export function RecoverySheet({ onClose, onRecovered }: { onClose: () => void; o
         <KitBackup
           kit={step.kit}
           title="Save your new recovery kit"
+          replacesOldKit
           onSaved={() => {
             onRecovered(step.wallet)
             onClose()
