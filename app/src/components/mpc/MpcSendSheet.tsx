@@ -1,14 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { BTC_EXPLORER, EXPLORER } from '../../config'
 import { ServiceError } from '../../mpc/api'
-import type { Asset } from '../../mpc/chains'
+import { isStablecoin, type Asset } from '../../mpc/chains'
 import { describePasskeyError, send, type SendStage } from '../../mpc/flows'
-import type { Kit } from '../../mpc/kit'
 import type { PhoneWallet } from '../../mpc/store'
 import { Confetti } from '../Confetti'
 import { Check, External, Fingerprint, Shield, Spinner } from '../icons'
 import { Sheet } from '../Sheet'
-import { KitPicker } from './KitPicker'
 
 export type SentTransfer = { hash: string; chain: 'bitcoin' | 'base'; asset: Asset; amount: string; to: string; at: number; viaKit: boolean; sponsored?: boolean }
 
@@ -18,34 +16,35 @@ type Step =
   | { name: 'success'; transfer: SentTransfer }
   | { name: 'error'; message: string; swissquoteDown: boolean; needsConfirm: boolean }
   | { name: 'blocked'; to: string; reason: string; offline: boolean }
-  | { name: 'kit' }
 
 // Clearly fake addresses on the share service's mock blocklist, for showing the screening in a demo.
 const DEMO_SCAM: Record<Asset, string> = {
   USDC: '0xbad0bad0bad0bad0bad0bad0bad0bad0bad0bad0',
+  EURC: '0xbad0bad0bad0bad0bad0bad0bad0bad0bad0bad0',
   ETH: '0xbad0bad0bad0bad0bad0bad0bad0bad0bad0bad0',
   BTC: 'tb1qh2at4w46h2at4w46h2at4w46h2at4w46jvgsm3',
 }
 
-const QUICK: Record<Asset, string[]> = { USDC: ['1', '5', '10'], ETH: ['0.0001', '0.0005'], BTC: ['0.0001', '0.0005', '0.001'] }
+const QUICK: Record<Asset, string[]> = { USDC: ['1', '5', '10'], EURC: ['1', '5', '10'], ETH: ['0.0001', '0.0005'], BTC: ['0.0001', '0.0005', '0.001'] }
 
 export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet; onClose: () => void; onSent: (t: SentTransfer) => void }) {
   const [asset, setAsset] = useState<Asset>('USDC')
   const [to, setTo] = useState('')
   const [amount, setAmount] = useState('')
   const [step, setStep] = useState<Step>({ name: 'form' })
-  const [kit, setKit] = useState<Kit | null>(null)
-  // USDC sent with Swissquote is gasless by default: the client needs no ETH at all.
+  // After the grace period the device holds both parts and signs alone (no Swissquote, no screening by it).
+  const alone = !!wallet.independent
+  // USDC and EURC sent with Swissquote are gasless by default: the client needs no ETH at all.
   const [payFeeMyself, setPayFeeMyself] = useState(false)
-  const gasless = asset === 'USDC' && !kit && !payFeeMyself
+  const gasless = isStablecoin(asset) && !alone && !payFeeMyself
   const busy = step.name === 'progress'
 
-  async function run(withKit: Kit | null, confirmHighValue = false) {
-    setStep({ name: 'progress', stage: withKit ? 'signing' : 'auth' })
+  async function run(confirmHighValue = false) {
+    setStep({ name: 'progress', stage: alone ? 'signing' : 'auth' })
     try {
-      const request = { asset, to: to.trim(), amount, confirmHighValue, gasless: gasless && !withKit }
-      const result = await send(wallet, request, (stage) => setStep({ name: 'progress', stage }), withKit ?? undefined)
-      const transfer = { ...result, asset, amount, to: to.trim(), at: Date.now(), viaKit: !!withKit }
+      const request = { asset, to: to.trim(), amount, confirmHighValue, gasless }
+      const result = await send(wallet, request, (stage) => setStep({ name: 'progress', stage }))
+      const transfer = { ...result, asset, amount, to: to.trim(), at: Date.now(), viaKit: alone }
       onSent(transfer)
       setStep({ name: 'success', transfer })
     } catch (e) {
@@ -58,17 +57,17 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
 
   function submit(event: FormEvent) {
     event.preventDefault()
-    if (to.trim() && Number(amount) > 0) run(kit)
+    if (to.trim() && Number(amount) > 0) run()
   }
 
   const explorer = (t: SentTransfer) => (t.chain === 'base' ? `${EXPLORER}/tx/${t.hash}` : `${BTC_EXPLORER}/tx/${t.hash}`)
 
   return (
-    <Sheet title={step.name === 'success' ? 'Sent' : step.name === 'kit' ? 'Sign with your recovery kit' : 'Send'} onClose={busy ? () => {} : onClose}>
+    <Sheet title={step.name === 'success' ? 'Sent' : 'Send'} onClose={busy ? () => {} : onClose}>
       {step.name === 'form' && (
         <form className="send-form" onSubmit={submit}>
-          <div className="segmented three" role="tablist">
-            {(['USDC', 'ETH', 'BTC'] as Asset[]).map((a) => (
+          <div className="segmented four" role="tablist">
+            {(['USDC', 'EURC', 'ETH', 'BTC'] as Asset[]).map((a) => (
               <button key={a} type="button" role="tab" aria-selected={asset === a} className={asset === a ? 'active' : ''} onClick={() => (setAsset(a), setAmount(''))}>
                 {a}
               </button>
@@ -93,12 +92,12 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
               <input value={to} onChange={(e) => setTo(e.target.value)} placeholder={asset === 'BTC' ? 'tb1… address' : '0x… address'} spellCheck={false} autoComplete="off" />
             </div>
           </label>
-          {!kit && (
+          {!alone && (
             <button type="button" className="text-btn demo-scam" onClick={() => setTo(DEMO_SCAM[asset])}>
               Demo: use a known scam address
             </button>
           )}
-          {asset === 'USDC' && !kit && (
+          {isStablecoin(asset) && !alone && (
             <label className="fee-row">
               <span>
                 Network fee: <strong>{gasless ? 'Free · paid by Swissquote' : 'Paid from your ETH'}</strong>
@@ -108,25 +107,25 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
               </span>
             </label>
           )}
-          {kit && <p className="notice small">Signing with your recovery kit: Swissquote is not involved.</p>}
+          {alone && <p className="notice small">Your device holds both parts since the takeover: it signs alone, without Swissquote.</p>}
           <button className="primary big with-icon" disabled={!to.trim() || !(Number(amount) > 0)}>
-            <Fingerprint /> {kit ? 'Sign with phone + kit' : 'Confirm with passkey'}
+            <Fingerprint /> {alone ? 'Sign on this device' : 'Confirm with Face ID'}
           </button>
         </form>
       )}
 
       {step.name === 'progress' && (
         <ol className="progress">
-          <Item state={step.stage === 'auth' ? 'active' : 'done'} title={kit ? 'Recovery kit unlocked' : 'Face ID confirmed'} hint={kit ? 'Phone and kit sign together on this device' : 'Swissquote verifies your passkey before co-signing'} />
+          <Item state={step.stage === 'auth' ? 'active' : 'done'} title={alone ? 'Both parts on this device' : 'Face ID confirmed'} hint={alone ? 'Released by the escrow agent after the grace period' : 'Swissquote verifies your passkey before co-signing'} />
           <Item
             state={step.stage === 'signing' ? 'active' : step.stage === 'broadcast' ? 'done' : 'waiting'}
-            title={kit ? 'Phone + kit sign (MPC)' : 'Phone + Swissquote sign (MPC)'}
-            hint={kit ? 'No Swissquote involvement at all' : 'Swissquote decodes and checks the transaction, then co-signs'}
+            title={alone ? 'This device signs (both parts)' : 'Your part + Swissquote sign (MPC)'}
+            hint={alone ? 'No Swissquote involvement' : 'Swissquote checks the recipient and the transaction, then co-signs'}
           />
           <Item
             state={step.stage === 'broadcast' ? 'active' : 'waiting'}
             title={gasless ? 'Swissquote submits it and pays the fee' : 'Sent to the network'}
-            hint={asset === 'BTC' ? 'Bitcoin testnet4' : gasless ? 'Gasless USDC: you need no ETH' : 'Base Sepolia'}
+            hint={asset === 'BTC' ? 'Bitcoin testnet4' : gasless ? `Gasless ${asset}: you need no ETH` : 'Base Sepolia'}
           />
         </ol>
       )}
@@ -140,7 +139,7 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
           <p className="review-amount">
             {step.transfer.amount} <span>{step.transfer.asset}</span>
           </p>
-          <p className="muted">{step.transfer.viaKit ? 'Signed with phone + recovery kit' : 'Signed with phone + Swissquote'}</p>
+          <p className="muted">{step.transfer.viaKit ? 'Signed on this device (both parts)' : 'Signed with your part + Swissquote'}</p>
           {step.transfer.sponsored && <p className="free">Network fee paid by Swissquote</p>}
           <a className="explorer-link" href={explorer(step.transfer)} target="_blank" rel="noreferrer">
             See it on the blockchain <External />
@@ -163,7 +162,7 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
           <p className="muted small">
             {step.offline
               ? "Swissquote is offline, so this phone checked its latest copy of Swissquote's list. Nothing was signed and no money moved."
-              : 'Swissquote checks every recipient before a payment is signed, also when you sign with your kit. Nothing was signed and no money moved.'}
+              : 'Swissquote checks every recipient before it co-signs. Nothing was signed and no money moved.'}
           </p>
           <button className="primary big" onClick={onClose}>
             Back to my wallet
@@ -175,20 +174,23 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
         <div className="error-view">
           <p className="error">{step.message}</p>
           {step.needsConfirm && (
-            <button className="primary big" onClick={() => run(kit, true)}>
+            <button className="primary big" onClick={() => run(true)}>
               Yes, I confirm this high-value transfer
             </button>
           )}
           {step.swissquoteDown && (
             <>
-              <p className="muted small">Swissquote can't co-sign right now. You don't need it: your phone and your recovery kit are two of three shares.</p>
-              <button className="primary big" onClick={() => setStep({ name: 'kit' })}>
-                Sign with my recovery kit instead
+              <p className="muted small">
+                Swissquote is unreachable, so your wallet is paused: every payment needs Swissquote's part. If it stays unreachable for the grace
+                period, the escrow agent hands its copy to your device (see the home screen).
+              </p>
+              <button className="primary big" onClick={onClose}>
+                Back to my wallet
               </button>
             </>
           )}
           {!step.needsConfirm && !step.swissquoteDown && (
-            <button className="primary big" onClick={() => run(kit)}>
+            <button className="primary big" onClick={() => run()}>
               Try again
             </button>
           )}
@@ -198,16 +200,6 @@ export function MpcSendSheet({ wallet, onClose, onSent }: { wallet: PhoneWallet;
         </div>
       )}
 
-      {step.name === 'kit' && (
-        <KitPicker
-          submitLabel="Unlock and sign"
-          onUnlocked={(k) => {
-            if (k.walletId !== wallet.walletId) return setStep({ name: 'error', message: 'This kit belongs to a different wallet.', swissquoteDown: false, needsConfirm: false })
-            setKit(k)
-            run(k)
-          }}
-        />
-      )}
     </Sheet>
   )
 }

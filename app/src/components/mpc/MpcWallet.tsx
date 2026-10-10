@@ -1,57 +1,51 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ServiceError } from '../../mpc/api'
-import { createWallet, describePasskeyError, loginWithPasskey, pairDevice, replaceKit, type CreateStage, type LoginResult } from '../../mpc/flows'
-import type { Kit } from '../../mpc/kit'
+import { createWallet, describePasskeyError, loginWithPasskey, parseDeviceLink, type CreateStage } from '../../mpc/flows'
 import { forgetPhoneWallet, loadPhoneWallet, savePhoneWallet, type PhoneWallet } from '../../mpc/store'
-import { Spinner } from '../icons'
 import { Onboarding } from '../Onboarding'
-import { KitBackup } from './KitBackup'
-import { KitPicker } from './KitPicker'
+import { JoinDevice } from './JoinDevice'
 import { MpcHome } from './MpcHome'
-import { RecoverySheet } from './RecoverySheet'
-
-const kitKey = (walletId: string) => `sq-mpc:kit-saved:${walletId}`
-const loadKitSaved = (walletId?: string) => {
-  try {
-    return walletId ? Number(localStorage.getItem(kitKey(walletId))) || null : null
-  } catch {
-    return null
-  }
-}
 
 const STAGE_TEXT: Record<CreateStage, string> = {
-  passkey: 'Confirm with your passkey…',
-  shares: 'Generating 3 key shares with Swissquote…',
+  passkey: 'Confirm with Face ID…',
+  shares: 'Creating your key with Swissquote…',
   done: 'Done',
 }
 
 function explain(error: unknown) {
-  if (error instanceof ServiceError && error.status === 0)
-    return 'Swissquote is unreachable. Start the share service (in services/: npm run share).'
+  if (error instanceof ServiceError && error.status === 0) return 'Swissquote is unreachable. Start the demo with scripts/start-demo.sh.'
   return describePasskeyError(error)
 }
 
+/**
+ * The self-custody wallet: one key in two parts. This device's part (identical copies on the client's
+ * other devices, each unlocked with its own Face ID) + Swissquote's part. Every payment needs both.
+ */
 export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
   const [wallet, setWallet] = useState<PhoneWallet | null>(loadPhoneWallet)
-  const [pendingKit, setPendingKit] = useState<{ kit: Kit; title: string; heading?: string; note?: string } | null>(null)
-  const [replaceStep, setReplaceStep] = useState<number | null>(null)
-  const [kitSavedAt, setKitSavedAt] = useState<number | null>(() => loadKitSaved(loadPhoneWallet()?.walletId))
+  const [link, setLink] = useState(() => parseDeviceLink(location.hash))
+  const [fresh, setFresh] = useState(false)
   const [busy, setBusy] = useState(false)
   const [progress, setProgress] = useState('')
   const [error, setError] = useState('')
-  const [recovering, setRecovering] = useState(false)
-  const [pairing, setPairing] = useState<LoginResult | null>(null)
-  const [pairStep, setPairStep] = useState<number | null>(null)
 
-  function markKitSaved(walletId: string) {
-    const at = Date.now()
-    setKitSavedAt(at)
-    try {
-      localStorage.setItem(kitKey(walletId), String(at))
-    } catch {
-      // Only used for the "saved" hint.
-    }
+  useEffect(() => {
+    const onHash = () => setLink(parseDeviceLink(location.hash))
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  const clearLink = () => {
+    history.replaceState(null, '', location.pathname + location.search)
+    setLink(null)
   }
+
+  useEffect(() => {
+    if (link && wallet?.walletId === link.walletId) {
+      clearLink()
+      onToast('This device already has your wallet')
+    }
+  }, [link, wallet, onToast])
 
   async function create(name: string) {
     setBusy(true)
@@ -59,7 +53,8 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
     try {
       const result = await createWallet(name, (stage, step) => setProgress(stage === 'shares' && step ? `${STAGE_TEXT.shares} (${step}/4)` : STAGE_TEXT[stage]))
       setWallet(result.wallet)
-      setPendingKit({ kit: result.kit, title: 'Save your recovery kit' })
+      setFresh(true)
+      onToast('Your wallet is ready')
     } catch (e) {
       setError(explain(e))
     } finally {
@@ -75,15 +70,12 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
       const result = await loginWithPasskey()
       const local = loadPhoneWallet()
       if (local && local.walletId === result.walletId) {
-        // This device already holds Share A for the wallet: just log in.
         const named = { ...local, name: local.name ?? result.name ?? undefined }
         savePhoneWallet(named)
         setWallet(named)
-        setKitSavedAt(loadKitSaved(named.walletId))
         onToast(`Welcome back${result.name ? `, ${result.name.split(' ')[0]}` : ''}`)
       } else {
-        // Passkey is fine, but this device has no phone share yet: pair it with the kit.
-        setPairing(result)
+        setError('Your passkey is fine, but this device has no copy of your key part. On a device that has it, tap “Add a device” and open the link here.')
       }
     } catch (e) {
       setError(explain(e))
@@ -92,122 +84,34 @@ export function MpcWallet({ onToast }: { onToast: (m: string) => void }) {
     }
   }
 
-  async function pair(login: LoginResult, kit: Kit) {
-    setPairStep(0)
-    setError('')
-    try {
-      const result = await pairDevice(login, kit, setPairStep)
-      setPairing(null)
-      setWallet(result.wallet)
-      setPendingKit({ kit: result.kit, title: 'Save your updated recovery kit' })
-    } catch (e) {
-      setError(explain(e))
-    } finally {
-      setPairStep(null)
-    }
-  }
-
-  async function replaceLostKit(current: PhoneWallet) {
-    setReplaceStep(0)
-    try {
-      const result = await replaceKit(current, setReplaceStep)
-      setWallet(result.wallet)
-      setPendingKit({
-        kit: result.kit,
-        title: 'Save your new recovery kit',
-        heading: 'Your old kit no longer works ✓',
-        note: 'Phone and Swissquote issued new shares. Whoever has your old kit file can no longer use it with anything you still use.',
-      })
-    } catch (e) {
-      onToast(explain(e))
-    } finally {
-      setReplaceStep(null)
-    }
-  }
-
-  if (wallet && replaceStep !== null)
+  if (link && wallet?.walletId !== link.walletId)
     return (
-      <section className="card">
-        <p className="loading-line">
-          <Spinner /> Phone and Swissquote are issuing new key shares… ({replaceStep}/4)
-        </p>
-      </section>
-    )
-
-  if (wallet && pendingKit)
-    return (
-      <>
-        <div className="welcome">
-          <strong>{pendingKit.heading ?? (pendingKit.title === 'Save your recovery kit' ? 'Your wallet is ready 🎉' : 'This device is connected 🎉')}</strong>
-          <span>Share A is on this device, Share B at Swissquote. One step left: save Share C.</span>
-          {pendingKit.title === 'Save your recovery kit' && <span>🎁 Swissquote is sending you a welcome bonus of test USDC + ETH for gas (demo).</span>}
-        </div>
-        <KitBackup
-          kit={pendingKit.kit}
-          title={pendingKit.title}
-          note={pendingKit.note}
-          onSaved={() => {
-            markKitSaved(pendingKit.kit.walletId)
-            setPendingKit(null)
-            onToast('Recovery kit downloaded')
-          }}
-        />
-      </>
+      <JoinDevice
+        link={link}
+        replacesWallet={!!wallet}
+        onJoined={(joined) => {
+          setWallet(joined)
+          clearLink()
+          onToast('This device is added to your wallet')
+        }}
+        onCancel={clearLink}
+      />
     )
 
   if (wallet)
     return (
       <MpcHome
         wallet={wallet}
-        kitSavedAt={kitSavedAt}
+        fresh={fresh}
         onToast={onToast}
+        onWalletChange={setWallet}
         onForget={() => {
           forgetPhoneWallet()
           setWallet(null)
-          setKitSavedAt(null)
+          setFresh(false)
         }}
-        onReplaceKit={() => replaceLostKit(wallet)}
       />
     )
 
-  if (pairing)
-    return (
-      <section className="card">
-        <div className="card-head">
-          <h2>Connect this device</h2>
-          <span className="pill ok">Passkey verified</span>
-        </div>
-        <p className="muted small">
-          Welcome back{pairing.name ? `, ${pairing.name.split(' ')[0]}` : ''}. This browser does not hold your phone share yet. Load your recovery kit:
-          together with your passkey, Swissquote and the kit issue a new phone share for this device. Your addresses stay the same.
-        </p>
-        {pairStep === null ? (
-          <KitPicker submitLabel="Connect this device" onUnlocked={(kit) => pair(pairing, kit)} />
-        ) : (
-          <p className="loading-line">
-            <Spinner /> Issuing a new phone share with Swissquote and your kit… ({pairStep}/4)
-          </p>
-        )}
-        {error && <p className="error small">{error}</p>}
-        <button className="text-btn" onClick={() => setPairing(null)}>
-          Cancel
-        </button>
-      </section>
-    )
-
-  return (
-    <>
-      <Onboarding busy={busy} progress={progress} error={error} onCreate={create} onLogin={login} onRecover={() => setRecovering(true)} />
-      {recovering && (
-        <RecoverySheet
-          onClose={() => setRecovering(false)}
-          onRecovered={(recovered) => {
-            setWallet(recovered)
-            markKitSaved(recovered.walletId)
-            onToast('Wallet recovered: same addresses, new phone share')
-          }}
-        />
-      )}
-    </>
-  )
+  return <Onboarding busy={busy} progress={progress} error={error} onCreate={create} onLogin={login} />
 }

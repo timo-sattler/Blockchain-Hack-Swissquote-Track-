@@ -1,46 +1,38 @@
 # pitch/ — Demo script and pitch material
 
 - Slides: the live presentation at `/present.html` (keys: → next, ← back, `f` full screen, `c` clear the feed, `s` simulated run).
-- `ai-tools.md`: AI tools used. `architecture.png`: architecture diagram.
+- [`ai-tools.md`](ai-tools.md): AI tools used (required in the submission).
+- Architecture diagram: `app/public/architecture.svg` (also on the slides).
 
-**The story in one sentence:** one key, three parts, any two sign: Swissquote, your phone or laptop, and a USB stick. Going through Swissquote is safer and free, but Swissquote can never move your money or lock you out.
+**The story in one sentence:** one key, two parts: yours (on your laptop, a copy on your phone, each with Face ID) and Swissquote's. Going through Swissquote is safer and less pricey: it blocks malicious addresses and pays the fee. It can never move your money alone, and if it is ever gone, a six-month grace period gives you full control.
 
 ## Before the demo (15 minutes ahead)
 
-1. **Start everything:** `scripts/start-demo.sh --tunnel`. All lines should show ✓. Note the public link. Do not restart the tunnel afterwards: passkeys are bound to that address.
-2. **Projector:** open `<public link>/present.html`, press `f` (full screen) and `c` (clear the feed).
-3. **Demo device:** open `<public link>` (always the same address you created the wallet on) → **Crypto** tab → your wallet.
-4. **Fund the wallet** (copy its `0x…` address from the wallet card):
-   - test USDC: https://faucet.circle.com → Base Sepolia (for the free payment);
-   - a little test ETH: https://portal.cdp.coinbase.com/products/faucet → Base Sepolia (only for the "Swissquote down" payment, which pays its own fee).
-   Wait until the balance shows in the app.
-5. **Recovery kit:** have the kit file (`swissquote-recovery-kit-….json`, usually in Downloads) on the USB stick, and know its password.
-6. **Treasury:** the start script prints it; it needs a little ETH for free payments (0.0005 ETH is plenty).
-7. Have a recipient address ready, e.g. a teammate's wallet.
+1. **Start everything:** `scripts/start-demo.sh --tunnel`. All lines ✓; note the public link and keep the tunnel running (passkeys are bound to that address).
+2. **Treasury:** the script prints Swissquote's fee account and balance. It needs a little Base Sepolia ETH for free USDC/EURC transfers.
+3. **Projector:** `<public link>/present.html`, press `f` and `c`.
+4. **Laptop:** open `<public link>` (not localhost, so the phone can scan its QR codes) → Crypto tab → **Create my wallet**.
+5. **Fund the wallet:** test USDC (and EURC) from https://faucet.circle.com (Base Sepolia) to the wallet's `0x…` address.
+6. **Phone:** ready to scan a QR code.
 
 ## Live demo (about 5 minutes)
 
 | # | Click | Say |
 |---|---|---|
-| 1 | Slides: problem → **Our answer** (triangle) | "One key, three parts: Swissquote, your device, your USB stick. Any two sign. The whole key never exists anywhere." |
-| 2 | App: show **Who holds your key shares** (A this device, B Swissquote, C recovery kit) and the Bitcoin + Base addresses | "Same key on Bitcoin and every EVM chain." |
-| 3 | **Send** → USDC → `1` → recipient → fee row says *Free · paid by Swissquote* → **Confirm with passkey** → Touch ID → success → *See it on the blockchain* | "Face ID for every payment. Swissquote checks it, co-signs and pays the network fee." |
-| 4 | **Send** → USDC → `1` → **Demo: use a known scam address** → **Confirm with passkey** → red **Blocked by Swissquote**. Point at the feed: *Payment blocked* | "Every recipient is screened. Nothing was signed, no money moved." |
-| 5 | Terminal: `kill $(lsof -ti tcp:8790)` (feed: *Swissquote offline*). **Send** → USDC → `1` → recipient → **Sign with my recovery kit instead** → kit file + password → success | "Swissquote is never a gatekeeper: device + USB still sign. And the app still screens, with its copy of Swissquote's list." |
-| 6 | Terminal: `scripts/start-demo.sh` (restarts only the share service) | |
-| 7 | App: **Remove wallet from this device (simulate a lost phone)** → OK | "Device lost." |
-| 8 | **Recover with your kit** → kit file + password → **Continue** → **Attacker with …'s phone + e-mail** → refused | "An attacker with your phone and e-mail is refused, and you get an alert." |
-| 9 | **Recover with your kit** again → kit + password → **Take selfie as …** → safety delay (30 s in the demo) | "In production 48 hours, and every old device gets a red alert with a cancel button." |
-| 10 | **Create passkey and restore** → Touch ID → save the **new** kit → same addresses and balance | "Same addresses, the old kit is now worthless. Recovery never moved the money." |
-| 11 | Slides: custody, legal, business | "Swissquote alone can't move funds, can't lock you out, and the wallet is ownership-verified from the first second." |
-
-Optional, if time allows: **Backups for friends** on two other devices (on-chain backup and give-back), or the escrow agent (Swissquote gone + device lost).
+| 1 | Slides: problem → **Our answer** | "One key, two parts. Yours on your devices, Swissquote's at the bank. Every payment needs both; the full key never exists." |
+| 2 | Laptop: **Your key: two parts**, then **Receive** → *The same key on other networks* | "My part is on this laptop, unlocked with Face ID. USDC, EURC, ETH and Bitcoin today, and addresses on every major network from the same key." |
+| 3 | **Send** → USDC → `1` → a teammate's address → *Free · paid by Swissquote* → **Confirm with Face ID** → success | "Swissquote checks it, co-signs and pays the fee." |
+| 4 | **Send** → USDC → `1` → **Demo: use a known scam address** → **Confirm with Face ID** → **Blocked by Swissquote**; feed: *Payment blocked* | "Every payment goes through Swissquote's screening, and nobody can skip it: I never hold both parts." |
+| 5 | **Add a device** → Face ID → QR code. Phone: scan → **Create passkey and add this device** → Face ID. Laptop: *iPhone added* | "An identical copy of my part, with the phone's own Face ID. Swissquote relayed it but cannot read it." |
+| 6 | **Lose:** laptop → **Remove wallet from this device**. Phone: **Remove** next to the laptop | "Laptop stolen. One tap on the phone, and its copy is useless: Swissquote refuses its Face ID." |
+| 7 | **Recover:** phone → **Add a device** → QR code. Laptop: open the link → **Create passkey and add this device** | "New laptop, same wallet, same addresses. Access recovered, nothing moved." |
+| 8 | **How my key works** on both devices; optional terminal: `cd services && npm run insider` | "Same fingerprint on my devices, a different one at Swissquote, and the escrow holds a copy of Swissquote's. Here Swissquote attacks its own database: it cannot sign." |
+| 9 | Terminal: `kill $(lsof -ti tcp:8790)`. Phone: *your wallet is paused* with a countdown → **Take over my wallet** | "If Swissquote ever fails, the wallet pauses. After the grace period, six months in reality, 30 seconds here, the escrow agent hands its copy to my device." |
+| 10 | Terminal: `scripts/start-demo.sh` (Swissquote back). Slides: custody, legal, business | "Swissquote can never move your money, and can never trap it." |
 
 ## If something goes wrong
 
-- **Network or chain is slow:** press `s` in the presentation for the simulated run (marked SIMULATED).
-- **"Swissquote can't co-sign right now"** when you did not stop it: run `scripts/start-demo.sh` again.
-- **Tunnel died:** `scripts/start-demo.sh --tunnel` gives a new link; wallets created on the old link need **Recover with your kit** there.
-- **Free payment fails with "treasury has no testnet ETH":** fund the treasury address the start script prints.
-- **Kit payment fails with insufficient funds:** the wallet needs a little test ETH (step 4 above).
-- After a recovery, only the **new** kit works.
+- Slow network: press `s` in the presentation for the simulated run.
+- Free transfer refused ("fee account is empty"): fund the treasury address the start script prints, or tick **Pay it myself** (the wallet then needs a little ETH).
+- Tunnel died: `scripts/start-demo.sh --tunnel` gives a new link; create a new wallet on it.
+- The takeover in step 9 ends that wallet's link to Swissquote: create a fresh wallet for the next rehearsal.

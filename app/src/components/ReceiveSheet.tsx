@@ -4,8 +4,19 @@ import { Copy } from './icons'
 import { Sheet } from './Sheet'
 
 export type ReceiveOption = { label: string; network: string; address: string }
+export type OtherNetwork = { name: string; detail: string; address: string }
 
-export function ReceiveSheet({ options, onCopy, onClose }: { options: ReceiveOption[]; onCopy: (address: string) => void; onClose: () => void }) {
+export function ReceiveSheet({
+  options,
+  others = [],
+  onCopy,
+  onClose,
+}: {
+  options: ReceiveOption[]
+  others?: OtherNetwork[]
+  onCopy: (address: string) => void
+  onClose: () => void
+}) {
   const [selected, setSelected] = useState(0)
   const [qr, setQr] = useState('')
   const option = options[selected]
@@ -31,7 +42,30 @@ export function ReceiveSheet({ options, onCopy, onClose }: { options: ReceiveOpt
         <button className="primary big with-icon" onClick={() => onCopy(option.address)}>
           <Copy /> Copy address
         </button>
-        <p className="fineprint">Only send on {option.network}. Assets sent on other networks will not arrive.</p>
+        <p className="fineprint">This demo shows {option.network} only. Send test assets on that network.</p>
+        {others.length > 0 && (
+          <div className="other-networks">
+            <h3>The same key on other networks</h3>
+            <ul>
+              {others.map((n) => (
+                <li key={n.name}>
+                  <div>
+                    <strong>{n.name}</strong>
+                    <span>{n.detail}</span>
+                    <code>{n.address}</code>
+                  </div>
+                  <button className="icon-btn" onClick={() => onCopy(n.address)} aria-label={`Copy ${n.name} address`}>
+                    <Copy />
+                  </button>
+                </li>
+              ))}
+            </ul>
+            <p className="fineprint">
+              All derived from your one public key, so your two parts control them. No contract has to be deployed on any network. This demo
+              sends on Base Sepolia and Bitcoin testnet4; turning on another network only needs Swissquote's policy to allow it.
+            </p>
+          </div>
+        )}
       </div>
     </Sheet>
   )

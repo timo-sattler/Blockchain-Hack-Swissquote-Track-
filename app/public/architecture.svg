@@ -1,154 +1,94 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 930" width="1280" height="930" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" role="img" aria-label="Architecture of the Swissquote self-custody wallet: 2-of-3 MPC between phone, Swissquote share service and recovery kit">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" width="1280" height="760" font-family="Inter, 'Segoe UI', system-ui, -apple-system, sans-serif" role="img" aria-label="Architecture of the two-part Swissquote wallet: the client's devices hold identical copies of part A, Swissquote's share service holds part B, an independent escrow agent holds a copy of part B for the grace period">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0L10 5L0 10z" fill="#5b6170"/>
     </marker>
+    <style>
+      .box { fill: #ffffff; stroke: #d0d5dd; stroke-width: 2; }
+      .a { stroke: #2563eb; }
+      .b { stroke: #e30613; }
+      .e { stroke: #b45309; }
+      .chain { fill: #f6f7f9; }
+      .title { font-size: 22px; font-weight: 700; fill: #11141a; }
+      .line { font-size: 16px; fill: #3d4350; }
+      .muted { font-size: 14px; fill: #646b78; }
+      .badge { font-size: 14px; font-weight: 700; fill: #ffffff; }
+      .edge { stroke: #5b6170; stroke-width: 2; fill: none; }
+      .dashed { stroke-dasharray: 8 7; }
+      .label { font-size: 14px; fill: #3d4350; font-weight: 600; }
+      .caption { font-size: 17px; fill: #11141a; font-weight: 600; }
+    </style>
   </defs>
-  <rect width="1280" height="930" fill="#ffffff"/>
+  <rect width="1280" height="760" fill="#ffffff"/>
 
-  <!-- Title -->
-  <text x="30" y="44" font-size="24" font-weight="700" fill="#1d2230">Swissquote Self-Custody Wallet: architecture (2-of-3 MPC)</text>
-  <text x="30" y="70" font-size="14" fill="#5b6170">Solid = real · dashed orange = mocked for the hackathon · no party ever holds the whole key</text>
+  <!-- signed transactions from the devices -->
+  <path class="edge" d="M190 80V36H1100V80" marker-end="url(#arrow)"/>
+  <text x="640" y="28" text-anchor="middle" class="label">signed transactions (Bitcoin, Base)</text>
 
-  <!-- ============ Column 1: client ============ -->
-  <rect x="30" y="100" width="350" height="640" rx="16" fill="#f5f7fb" stroke="#d5dae4"/>
-  <text x="48" y="126" font-size="13" font-weight="700" fill="#5b6170" letter-spacing="0.6">CLIENT (ANNA) · REAL</text>
+  <!-- client devices -->
+  <rect class="box a" x="40" y="80" width="300" height="150" rx="16"/>
+  <circle cx="72" cy="114" r="15" fill="#2563eb"/><text x="72" y="119" text-anchor="middle" class="badge">A</text>
+  <text x="96" y="121" class="title">Your laptop</text>
+  <text x="62" y="162" class="line">Swissquote app · your part</text>
+  <text x="62" y="190" class="line">Unlocked with Face ID</text>
 
-  <rect x="50" y="140" width="310" height="300" rx="12" fill="#ffffff" stroke="#2b2f3a" stroke-width="1.5"/>
-  <text x="66" y="166" font-size="15" font-weight="700" fill="#1d2230">Anna's phone · Swissquote app</text>
-  <rect x="66" y="178" width="278" height="40" rx="8" fill="#f5f7fb" stroke="#d5dae4"/>
-  <text x="80" y="203" font-size="13" fill="#1d2230">Crypto tab UI (React PWA)</text>
-  <rect x="66" y="228" width="278" height="40" rx="8" fill="#f5f7fb" stroke="#d5dae4"/>
-  <text x="80" y="253" font-size="13" fill="#1d2230">MPC party A · Silent Shard (WASM)</text>
-  <rect x="66" y="278" width="278" height="40" rx="8" fill="#eaf1fe" stroke="#2f6fde"/>
-  <circle cx="86" cy="298" r="11" fill="#2f6fde"/>
-  <text x="86" y="302.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">A</text>
-  <text x="106" y="303" font-size="13" fill="#1d2230">Share A · encrypted at rest</text>
-  <rect x="66" y="328" width="278" height="56" rx="8" fill="#f5f7fb" stroke="#d5dae4"/>
-  <text x="80" y="351" font-size="13" fill="#1d2230">Passkey in the Secure Enclave</text>
-  <text x="80" y="370" font-size="13" fill="#5b6170">Face ID unlocks Share A (WebAuthn PRF)</text>
-  <text x="66" y="420" font-size="12.5" font-weight="600" fill="#d8211b">Never holds Share B</text>
+  <rect class="box a" x="40" y="340" width="300" height="150" rx="16"/>
+  <circle cx="72" cy="374" r="15" fill="#2563eb"/><text x="72" y="379" text-anchor="middle" class="badge">A</text>
+  <text x="96" y="381" class="title">Your phone</text>
+  <text x="62" y="422" class="line">Identical copy of your part</text>
+  <text x="62" y="450" class="line">Its own Face ID passkey</text>
 
-  <rect x="50" y="470" width="310" height="80" rx="12" fill="#f3efff" stroke="#7c4dff" stroke-width="1.5"/>
-  <circle cx="72" cy="492" r="11" fill="#7c4dff"/>
-  <text x="72" y="496.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">C</text>
-  <text x="92" y="497" font-size="15" font-weight="700" fill="#1d2230">Recovery kit (client-held)</text>
-  <text x="66" y="519" font-size="13" fill="#1d2230">Share C, encrypted, in iCloud / Drive</text>
-  <text x="66" y="537" font-size="13" fill="#5b6170">+ paper key to decrypt it</text>
+  <path class="edge dashed" d="M190 230V338" marker-end="url(#arrow)"/>
+  <text x="204" y="270" class="label">Add a device:</text>
+  <text x="204" y="290" class="muted">one-time link, copy encrypted</text>
+  <text x="204" y="308" class="muted">so Swissquote cannot read it</text>
 
-  <rect x="50" y="570" width="310" height="80" rx="12" fill="#ffffff" stroke="#7c4dff" stroke-width="1.5" stroke-dasharray="6 5"/>
-  <text x="66" y="595" font-size="15" font-weight="700" fill="#1d2230">Optional: guardian (relative)</text>
-  <text x="66" y="617" font-size="13" fill="#1d2230">Can hold Share C instead of the kit</text>
-  <text x="66" y="635" font-size="13" fill="#5b6170">No Swissquote account needed</text>
+  <!-- Swissquote -->
+  <rect class="box b" x="480" y="80" width="360" height="270" rx="16"/>
+  <circle cx="512" cy="114" r="15" fill="#e30613"/><text x="512" y="119" text-anchor="middle" class="badge">B</text>
+  <text x="536" y="121" class="title">Swissquote share service</text>
+  <text x="502" y="148" class="muted">separate process · own storage</text>
+  <text x="502" y="184" class="line">• Swissquote's part (never leaves)</text>
+  <text x="502" y="212" class="line">• Checks the Face ID login</text>
+  <text x="502" y="240" class="line">• Screens every recipient</text>
+  <text x="502" y="268" class="line">• Policy: USDC · EURC · ETH · BTC</text>
+  <text x="502" y="296" class="line">• Pays USDC / EURC fees</text>
+  <text x="502" y="330" class="muted">Never signs alone</text>
 
-  <text x="50" y="696" font-size="13" font-weight="600" fill="#1d2230">Phone + kit = 2 of 3:</text>
-  <text x="50" y="715" font-size="13" fill="#5b6170">works even without Swissquote</text>
+  <path class="edge" d="M342 150H478" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text x="410" y="136" text-anchor="middle" class="label">2-of-2 MPC</text>
+  <text x="410" y="172" text-anchor="middle" class="muted">messages only</text>
+  <path class="edge" d="M342 410C410 410 420 330 478 300" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
 
-  <!-- ============ Column 2: Swissquote (mocked) ============ -->
-  <rect x="480" y="100" width="350" height="640" rx="16" fill="#fff8f4" stroke="#f05a2a" stroke-dasharray="7 6"/>
-  <text x="498" y="126" font-size="13" font-weight="700" fill="#c2410c" letter-spacing="0.6">SWISSQUOTE · MOCKED, SEPARATE PROCESSES</text>
+  <!-- blockchains -->
+  <rect class="box chain" x="960" y="80" width="280" height="110" rx="16"/>
+  <text x="984" y="124" class="title">Base Sepolia</text>
+  <text x="984" y="156" class="line">USDC · EURC · ETH</text>
+  <rect class="box chain" x="960" y="230" width="280" height="110" rx="16"/>
+  <text x="984" y="274" class="title">Bitcoin testnet4</text>
+  <text x="984" y="306" class="line">Same key, SegWit address</text>
+  <path class="edge" d="M842 150H958" marker-end="url(#arrow)"/>
+  <text x="900" y="136" text-anchor="middle" class="label">gasless relay</text>
 
-  <rect x="500" y="140" width="310" height="150" rx="12" fill="#ffffff" stroke="#f05a2a" stroke-width="1.5" stroke-dasharray="6 5"/>
-  <circle cx="522" cy="162" r="11" fill="#f05a2a"/>
-  <text x="522" y="166.5" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">B</text>
-  <text x="542" y="167" font-size="15" font-weight="700" fill="#1d2230">Share service · MPC party B</text>
-  <text x="516" y="192" font-size="13" fill="#1d2230">Separate Node process, own storage</text>
-  <text x="516" y="211" font-size="13" fill="#1d2230">Holds Share B, never sent to the app</text>
-  <text x="516" y="230" font-size="13" fill="#5b6170">Auto co-signs everyday payments</text>
-  <text x="516" y="249" font-size="13" fill="#5b6170">High value: extra checks + confirm</text>
-  <text x="516" y="268" font-size="13" fill="#5b6170">Recovery: re-KYC + 48 h delay + alerts</text>
+  <!-- escrow -->
+  <rect class="box e" x="480" y="470" width="360" height="160" rx="16"/>
+  <circle cx="512" cy="504" r="15" fill="#b45309"/><text x="512" y="509" text-anchor="middle" class="badge">B</text>
+  <text x="536" y="511" class="title">Escrow agent (mock)</text>
+  <text x="502" y="548" class="line">Copy of Swissquote's part</text>
+  <text x="502" y="576" class="line">After the grace period (6 months;</text>
+  <text x="502" y="602" class="line">demo 30 s) it goes to your device</text>
+  <path class="edge dashed" d="M660 352V468" marker-end="url(#arrow)"/>
+  <text x="674" y="410" class="label">copy at creation</text>
+  <path class="edge dashed" d="M478 560C420 560 400 470 342 460" marker-end="url(#arrow)"/>
+  <text x="372" y="590" class="label">takeover</text>
 
-  <rect x="500" y="320" width="147" height="64" rx="10" fill="#ffffff" stroke="#f05a2a" stroke-dasharray="5 4"/>
-  <text x="512" y="345" font-size="13" font-weight="700" fill="#1d2230">Core banking</text>
-  <text x="512" y="365" font-size="12" fill="#5b6170">KYC profile, CHF</text>
-  <rect x="663" y="320" width="147" height="64" rx="10" fill="#ffffff" stroke="#f05a2a" stroke-dasharray="5 4"/>
-  <text x="675" y="345" font-size="13" font-weight="700" fill="#1d2230">KYC provider</text>
-  <text x="675" y="365" font-size="12" fill="#5b6170">ID + selfie check</text>
-  <rect x="500" y="396" width="147" height="64" rx="10" fill="#ffffff" stroke="#f05a2a" stroke-dasharray="5 4"/>
-  <text x="512" y="421" font-size="13" font-weight="700" fill="#1d2230">Compliance</text>
-  <text x="512" y="441" font-size="12" fill="#5b6170">Sanctions screening</text>
-  <rect x="663" y="396" width="147" height="64" rx="10" fill="#ffffff" stroke="#f05a2a" stroke-dasharray="5 4"/>
-  <text x="675" y="421" font-size="13" font-weight="700" fill="#1d2230">Notifications</text>
-  <text x="675" y="441" font-size="12" fill="#5b6170">Push &amp; e-mail</text>
+  <!-- event hub -->
+  <rect class="box" x="960" y="470" width="280" height="160" rx="16"/>
+  <text x="984" y="514" class="title">Event hub</text>
+  <text x="984" y="548" class="line">Live presentation</text>
+  <text x="984" y="576" class="muted">/present.html</text>
+  <path class="edge" d="M842 320C900 320 900 520 958 520" marker-end="url(#arrow)"/>
+  <text x="912" y="430" class="label">events</text>
 
-  <rect x="500" y="480" width="310" height="80" rx="12" fill="#ffffff" stroke="#f05a2a" stroke-dasharray="6 5"/>
-  <text x="516" y="505" font-size="15" font-weight="700" fill="#1d2230">Wallet registry</text>
-  <text x="516" y="527" font-size="13" fill="#1d2230">Address ↔ client ID: ownership proof</text>
-  <text x="516" y="545" font-size="13" fill="#5b6170">for the Travel Rule, set at creation</text>
-
-  <text x="500" y="696" font-size="13" font-weight="600" fill="#1d2230">Swissquote alone: 1 of 3 shares</text>
-  <text x="500" y="715" font-size="13" fill="#5b6170">cannot move or freeze the funds</text>
-
-  <!-- ============ Column 3: blockchains ============ -->
-  <rect x="930" y="100" width="320" height="640" rx="16" fill="#f2fbf6" stroke="#9fd8bb"/>
-  <text x="948" y="126" font-size="13" font-weight="700" fill="#0b7a4f" letter-spacing="0.6">PUBLIC BLOCKCHAINS · REAL</text>
-
-  <rect x="950" y="140" width="280" height="76" rx="12" fill="#ffffff" stroke="#2b2f3a" stroke-width="1.5"/>
-  <text x="966" y="164" font-size="15" font-weight="700" fill="#1d2230">Bitcoin testnet</text>
-  <text x="966" y="184" font-size="13" fill="#1d2230">SegWit address from the MPC key</text>
-  <text x="966" y="202" font-size="13" fill="#5b6170">via mempool.space API</text>
-
-  <rect x="950" y="236" width="280" height="76" rx="12" fill="#ffffff" stroke="#2b2f3a" stroke-width="1.5"/>
-  <text x="966" y="260" font-size="15" font-weight="700" fill="#1d2230">Base Sepolia + any EVM chain</text>
-  <text x="966" y="280" font-size="13" fill="#1d2230">Same key → same 0x address</text>
-  <text x="966" y="298" font-size="13" fill="#5b6170">USDC &amp; ETH via public RPC</text>
-
-  <rect x="950" y="332" width="280" height="64" rx="12" fill="#ffffff" stroke="#a3a9b5" stroke-dasharray="6 5"/>
-  <text x="966" y="356" font-size="14" font-weight="700" fill="#5b6170">Roadmap: Solana &amp; co.</text>
-  <text x="966" y="376" font-size="13" fill="#5b6170">Needs EdDSA MPC (2nd library)</text>
-
-  <rect x="950" y="470" width="280" height="80" rx="12" fill="#ffffff" stroke="#2b2f3a" stroke-width="1.5"/>
-  <text x="966" y="495" font-size="15" font-weight="700" fill="#1d2230">Demo control room</text>
-  <text x="966" y="517" font-size="13" fill="#1d2230">Live status + message flow</text>
-  <text x="966" y="535" font-size="13" fill="#5b6170">read from the real processes</text>
-
-  <text x="950" y="696" font-size="13" font-weight="600" fill="#1d2230">Chains only see one normal</text>
-  <text x="950" y="715" font-size="13" fill="#5b6170">signature from one address</text>
-
-  <!-- ============ Flows ============ -->
-  <g fill="none" stroke="#5b6170" stroke-width="1.6">
-    <!-- 1 phone <-> share service -->
-    <path d="M344 248H500" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-    <!-- 2 kit <-> phone -->
-    <path d="M205 470V442" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-    <!-- 3 recovery: kit <-> share service -->
-    <path d="M360 510H440V270H500" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
-    <!-- 4 share service <-> mocks / registry -->
-    <path d="M655 290V478" marker-end="url(#arrow)"/>
-    <!-- 5 phone -> blockchains -->
-    <path d="M344 198H420V86H905V178H950" marker-end="url(#arrow)"/>
-    <path d="M905 178V274H950" marker-end="url(#arrow)"/>
-    <!-- 6 control room <- share service -->
-    <path d="M810 215H885V510H950" stroke-dasharray="4 4" marker-end="url(#arrow)"/>
-  </g>
-  <g font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">
-    <circle cx="420" cy="248" r="12" fill="#1d2230"/><text x="420" y="252.5">1</text>
-    <circle cx="228" cy="456" r="12" fill="#1d2230"/><text x="228" y="460.5">2</text>
-    <circle cx="440" cy="390" r="12" fill="#1d2230"/><text x="440" y="394.5">3</text>
-    <circle cx="655" cy="304" r="12" fill="#1d2230"/><text x="655" y="308.5">4</text>
-    <circle cx="660" cy="86" r="12" fill="#1d2230"/><text x="660" y="90.5">5</text>
-    <circle cx="885" cy="400" r="12" fill="#1d2230"/><text x="885" y="404.5">6</text>
-  </g>
-
-  <!-- ============ Legend ============ -->
-  <line x1="30" y1="760" x2="1250" y2="760" stroke="#e4e7f0"/>
-  <text x="30" y="790" font-size="15" font-weight="700" fill="#1d2230">Flows</text>
-  <g font-size="13" fill="#1d2230">
-    <text x="30" y="814"><tspan font-weight="700">1</tspan>  Everyday signing: phone (A) + Swissquote (B) run MPC rounds over TLS; the app logs in with its passkey.</text>
-    <text x="30" y="834"><tspan font-weight="700">2</tspan>  Create and recover: Share C is exported to, and imported from, the encrypted recovery kit.</text>
-    <text x="30" y="854"><tspan font-weight="700">3</tspan>  Recovery: kit (C) + Swissquote (B) issue a new Share A after re-KYC, a 48 h delay and alerts. Same addresses.</text>
-    <text x="30" y="874"><tspan font-weight="700">4</tspan>  Swissquote checks KYC, sanctions and wallet ownership, and sends alerts (all mocked).</text>
-    <text x="30" y="894"><tspan font-weight="700">5</tspan>  The phone broadcasts signed transactions and reads balances on Bitcoin and EVM chains.</text>
-    <text x="30" y="914"><tspan font-weight="700">6</tspan>  The control room shows live status and message flow for the demo.</text>
-  </g>
-  <g font-size="13" fill="#1d2230">
-    <rect x="950" y="780" width="34" height="20" rx="5" fill="#ffffff" stroke="#2b2f3a" stroke-width="1.5"/>
-    <text x="994" y="795">Real component</text>
-    <rect x="950" y="810" width="34" height="20" rx="5" fill="#ffffff" stroke="#f05a2a" stroke-width="1.5" stroke-dasharray="5 4"/>
-    <text x="994" y="825">Mocked, labelled in the app</text>
-    <circle cx="960" cy="852" r="9" fill="#2f6fde"/><circle cx="981" cy="852" r="9" fill="#f05a2a"/><circle cx="1002" cy="852" r="9" fill="#7c4dff"/>
-    <text x="1020" y="856">Key shares A · B · C</text>
-    <text x="950" y="884" fill="#5b6170">Any 2 of 3 shares sign;</text>
-    <text x="950" y="902" fill="#5b6170">one share alone can do nothing.</text>
-  </g>
+  <text x="640" y="700" text-anchor="middle" class="caption">The full private key never exists. Swissquote alone, or Swissquote + the escrow copy (the same part), cannot sign.</text>
 </svg>

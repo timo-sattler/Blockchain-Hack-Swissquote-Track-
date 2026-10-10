@@ -1,54 +1,64 @@
 # Architecture
 
-The wallet uses **2-of-3 threshold ECDSA (MPC)**. One key is generated in three shares: Anna's phone (A), the Swissquote share service (B) and a recovery kit she keeps herself (C). Any two shares sign together; the whole key never exists in one place. Because the result is an ordinary ECDSA signature, the same wallet works on Bitcoin and on every EVM chain.
+The wallet uses **two-party threshold ECDSA (MPC, 2-of-2)**. One key is generated in two parts: the client's part on their devices and Swissquote's part in its share service. Both parts sign together; the whole key never exists in one place. Because the result is an ordinary ECDSA signature, the same wallet works on Bitcoin and every EVM network.
 
-![Architecture diagram](architecture.svg)
+![Architecture](../app/public/architecture.svg)
 
 ## Components
 
-| Component | Real or mocked | Role | What the real version would be |
-|-----------|----------------|------|--------------------------------|
-| Swissquote app, Crypto tab (`app/`) | **Real** | UI, runs MPC party A, broadcasts transactions | Same, inside the native Swissquote app |
-| Share A + passkey | **Real** | Phone's share. The passkey authorises every co-signature with Swissquote. Prototype: Share A is stored unencrypted in the browser | Share A encrypted with a key from the passkey (WebAuthn PRF) or kept in the platform keychain |
-| Recovery kit (Share C) | **Real** | Share C encrypted with a client-chosen password (PBKDF2-SHA256, 310 000 iterations, AES-256-GCM), downloaded as a file for the client's cloud drive or USB stick | Same, with a password-strength policy |
-| Guardian app (Share C, optional) | Planned | A relative holds Share C instead of the kit; no Swissquote account needed | Small companion app |
-| Share service (Share B) | **Mocked**, separate Node process with its own storage | Co-signs payments, enforces limits and the recovery policy | Swissquote service in an HSM / secure enclave |
-| Escrow agent (`services/escrow-agent.mjs`) | **Mocked**, separate Node process with its own storage | Holds a copy of Share B; stands in for Swissquote in one lost-share recovery only if Swissquote is gone and the client passes its identity check; deletes the copy afterwards | Swiss notary / trust company with an HSM, triggered by Swissquote's liquidation |
-| Gasless relay | **Real** (Swissquote treasury key on Base Sepolia) | Submits EIP-3009 `transferWithAuthorization` signed by phone + Swissquote and pays the fee; per-wallet daily quota | Swissquote relayer / paymaster budget |
-| Core banking | Mocked | Client ID, KYC status, CHF account | Swissquote core banking |
-| KYC provider | Mocked | ID + liveness selfie during recovery | Swissquote's existing video/ID verification |
-| Compliance | Mocked | Sanctions screening of recipient addresses | Chainalysis, Elliptic or similar |
-| Notifications | Mocked | Alerts when recovery starts or a high-value payment is requested | Push, e-mail, SMS |
-| Wallet registry | Partly real | The share service's wallet record links name, public key, addresses and passkey from the moment Swissquote co-generates the key ("ownership by construction", see `legal-compliance.md`); the client ID is mocked | Part of Swissquote's client database, with the client ID |
-| Bitcoin testnet | **Real** | Signed SegWit transactions, balances via mempool.space API | Bitcoin mainnet |
-| Base Sepolia (+ any EVM chain) | **Real** | Signed EVM transactions, USDC and ETH | Base / Ethereum mainnet and other EVM chains |
-| Demo control room | **Real** (demo tool) | Shows live status and message flow of the real processes | Not part of the product |
+| Component | Where | Role | Stores |
+|---|---|---|---|
+| **Wallet app** | `app/` (React, Vite; installable web app) | Swissquote app mock-up with the wallet in the Crypto tab. Runs party 0 of the MPC protocol, builds transactions, shows screening results, adds and removes devices | The client's part A and the device's passkey ID (browser storage) |
+| **Share service** | `services/share-service.mjs`, port 8790 | Swissquote's backend (mock): party 1. Verifies passkeys, decodes and screens every payment, co-signs its own hash, relays add-a-device copies it cannot read, sponsors USDC/EURC fees | Part B, the wallet record (addresses, device passkeys), sponsoring counters (`services/data/share-service/`) |
+| **Treasury** | `services/treasury.mjs` (inside the share service) | Swissquote's fee account on Base Sepolia: submits EIP-3009 authorizations, pays the gas | Its testnet key (`treasury-key.json`, git-ignored) |
+| **Escrow agent** | `services/escrow-agent.mjs`, port 8791 | Independent notary (mock): holds a copy of part B and releases it to the client's device after the grace period | Copies of part B (`services/data/escrow-agent/`) |
+| **Event hub** | `services/hub.mjs`, port 8787 | Collects events and streams them to the live presentation; watches the share service's health | Memory |
+| **Live presentation** | `app/src/present/`, `/present.html` | Slides, live architecture view, activity feed, network graph | — |
+| **Blockchains** | Base Sepolia, Bitcoin testnet4 | Settlement | — |
 
-The client app **never holds Share B**. Swissquote holds only one share and can neither move nor freeze funds on its own.
+The Vite dev server proxies `/share`, `/escrow` and `/hub`, so the app, the presentation and the services share one origin (and one Cloudflare tunnel for phones). Passkeys are bound to that origin.
 
 ## Flows
 
-1. **Wallet creation.** Anna opens the Crypto tab and registers a passkey with the share service (Face ID). Phone (A, also running party C locally) and share service (B) run distributed key generation. Share A stays on the phone (prototype: browser storage; production: encrypted with a passkey-derived key); Share C is encrypted with her password and downloaded as the recovery kit, never stored on the phone; Share B stays with the service. Because Swissquote co-generated the key in her session, its wallet record links her to the addresses from the start.
-2. **Authentication and everyday signing.** Face ID unlocks Share A. The app logs in to the share service with its passkey, then phone and service run the MPC signing rounds. The service co-signs automatically for normal payments and asks for an extra confirmation above a threshold. The phone broadcasts the signed transaction.
-3. **Signing without Swissquote.** If the service refuses or is gone, Anna loads her kit (C) and signs with phone + kit. No Swissquote involvement.
-4. **Recovery (phone lost).** On a new phone Anna loads her kit and passes re-KYC (ID + selfie, mocked). During a 48 h delay (demo 30 s) every device that still holds the wallet shows a red alert, and her current passkey can **cancel** the recovery. Afterwards the new phone registers a passkey, and kit (C) and service (B) re-issue all three shares. Public key and addresses stay the same. She saves a new kit and deletes the old one. Details: `recovery.md`.
-5. **Old phone locked out.** Each re-issue bumps the wallet's share generation (`epoch`). The old phone shows "This phone no longer controls the wallet", and the service refuses to co-sign with an outdated share (`409`). After a theft, an optional sweep to a brand-new key also makes the old phone share + old kit pair worthless.
+**Create.** `POST /wallets` → passkey registration (Face ID) → `POST /wallets/:id/keygen/start` + 4 rounds on `POST /mpc/:sid`: the app runs party 0, the share service party 1. Both end with the same public key; part A stays on the device, part B in the service. The service derives the addresses, deposits a copy of B with the escrow agent and emits `wallet_created`.
 
-## Status
+**Pay.** The app screens the recipient (`POST /screen`), logs in with the passkey (`/auth/options`, `/login`: a token bound to one transfer), builds the transaction itself and calls `POST /wallets/:id/sign/start`. The service decodes it, screens again, checks the high-value rule and starts signing on **its own** hash; the app verifies the hash matches, completes 3 rounds and combines the signature, then broadcasts. For USDC/EURC the app signs an EIP-3009 authorization instead and `POST /wallets/:id/relay` has the treasury submit it.
+
+**Add a device.** On a device with part A: Face ID → the app encrypts part A with a fresh random key and uploads the ciphertext (`POST /devices/invite`, single use, 10 minutes). The link `#add-device=<wallet>.<invite>.<key>` carries the key in the URL fragment, which browsers never send to servers. The new device registers its own passkey (`/devices/options`, `/devices/register`), receives the ciphertext and decrypts it locally.
+
+**Remove a device.** `POST /devices/remove` from another logged-in device: the service drops that passkey and revokes its tokens.
+
+**Grace period and takeover.** The escrow agent polls the share service's health. After `ESCROW_OUTAGE_SEC` of downtime (six months in production), `POST /wallets/:id/takeover/start` lets a device co-sign a one-time challenge with the escrow's copy of B; `POST /takeover/finish` verifies the signature against the wallet's public key, returns the copy and deletes it. The device then signs locally with both parts.
+
+## Where the data lives
+
+| Data | App (each device) | Share service | Escrow agent | Blockchain |
+|---|---|---|---|---|
+| Client's part A | ✔ | Only as ciphertext while a device is being added | | |
+| Swissquote's part B | Only after a takeover | ✔ | Copy | |
+| Public key, addresses | ✔ | ✔ | ✔ | Addresses |
+| Passkey private keys | Device passkey manager | | | |
+| Transactions | | | | ✔ |
+
+## Building blocks
+
+| Part | Choice |
+|---|---|
+| Threshold signatures | Silence Labs Silent Shard (DKLs23): `dkls-wasm-ll-web` in the app, `dkls-wasm-ll-node` in the services |
+| Passkeys | SimpleWebAuthn (browser + server) |
+| EVM | viem: transactions, EIP-712 / EIP-3009, Base Sepolia RPC |
+| Bitcoin | @scure/btc-signer: SegWit transactions; mempool.space testnet4 API |
+| Other networks' addresses | @scure/btc-signer, @scure/base, viem |
+| Tokens | Circle test USDC `0x036C…CF7e` and EURC `0x8084…359F` on Base Sepolia |
+
+## Status and evidence
 
 | Part | State |
-|------|-------|
-| 2-of-3 key generation between app, share service and kit; passkey registration and login | **Built**, tested end to end |
-| Co-signing with transaction decoding, mock sanctions screening, high-value confirmation | **Built**, tested |
-| Signing with phone + kit when Swissquote is down | **Built**, tested |
-| Recovery with mock re-KYC, attacker refusal, delay, new passkey, new kit, same addresses | **Built**, tested |
-| Owner veto: alert on every device during the delay, cancel with the current passkey | **Built**, tested end to end with virtual passkeys |
-| Replaced-device lockout: share epoch, lockout card, `409` on outdated shares | **Built**, tested end to end |
-| Real broadcasts on Base Sepolia and Bitcoin testnet4 | Built; needs testnet funds in the wallet |
-| Live presentation fed by the event hub | **Built**, tested (including killing the share service) |
-| Kit replacement (phone + Swissquote re-issue all shares; old kit refused) | **Built**, tested end to end |
-| Friend pieces: the password-locked kit split 2-of-3 with Shamir (audited library); recovery needs 2 pieces **and** the client's kit password | **Built**, tested end to end (two friends with a wrong password refused) |
-| On-chain backup between friends ([`onchain-backup.md`](onchain-backup.md)): `KitBackupMailbox` contract, inbox keys signed by the friends' wallets, encrypted pieces and the locked kit on-chain, give-back to the new phone | **Built.** 11 Foundry tests; tested end to end on a local chain with Base Sepolia's chain ID; contract deployed on Base Sepolia (`0x52f4…C4dD`), live relays need a funded treasury |
-| Escrow agent: recovery without Swissquote when the phone is lost | **Built**, tested end to end (attacker refused, same addresses, copy deleted) |
-| Gasless USDC (EIP-3009, relayed, quota) | **Built**; signature accepted by Base Sepolia USDC; a funded wallet is needed to show a completed transfer |
-| Share A encryption with WebAuthn PRF | Not built |
+|---|---|
+| Two-party key generation, passkey login, co-signing with decoding and screening | **Built**, covered by the service tests |
+| Gasless USDC and EURC (EIP-3009 relay with daily cap) | **Built**, tested; live relays need a funded treasury |
+| Adding and removing devices | **Built**, covered by the service tests and a headless browser run |
+| Grace period and takeover | **Built**, tested end to end (Swissquote stopped, takeover, payment signed on the device alone) |
+| Custody proof (Swissquote cannot sign alone) | Tests + `npm run insider` + *How my key works* in the app |
+| Real broadcasts on Base Sepolia and Bitcoin testnet4 | **Built**; needs testnet funds in the wallet |
+| Swissquote backend, KYC, list of malicious addresses, escrow agent | **Mocks** (labelled) |

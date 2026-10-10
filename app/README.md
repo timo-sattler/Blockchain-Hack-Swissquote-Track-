@@ -1,106 +1,53 @@
 # app/ — Wallet frontend
 
-Self-custody wallet prototype: a **2-of-3 MPC wallet** for Bitcoin testnet4 and Base Sepolia, shown inside a mock-up of the Swissquote app. One key, three shares: the phone (A), the Swissquote share service (B, a mocked separate process in [`services/`](../services/README.md)) and a recovery kit the client keeps (C). Any two sign; the whole key never exists anywhere.
+The two-part self-custody wallet (Bitcoin testnet4 and Base Sepolia), shown inside a mock-up of the Swissquote app, plus the live presentation. One key in two parts: the client's part on their devices and Swissquote's part in the share service ([`services/`](../services/README.md), a mocked separate process). Both sign together; the whole key never exists anywhere.
 
-## Swissquote app mock-up
+## What you see
 
-The app opens as a look-alike of the Swissquote mobile app (Home, Trade, Bank, Plan) with a new **Crypto** tab in the bottom bar. Everything outside the Crypto tab is static demo data (marked *Demo data*) built from public marketing screenshots, without official logos. The Crypto tab shows:
+The app opens as a look-alike of the Swissquote mobile app (Home, Trade, Bank, Plan: static demo data, without official logos) with a **Crypto** tab that holds the real wallet:
 
-- **Held by Swissquote** (mock): the crypto Swissquote holds for the client today, with a mocked *Move to my self-custody wallet* flow.
-- **My self-custody wallet** (real): the MPC wallet described below.
-
-## What works today
-
-All of this was tested end to end in Chrome with a virtual passkey authenticator against the real share service:
-
-- **Create:** a passkey is registered with Swissquote, then phone, share service and kit run distributed key generation (Silence Labs Silent Shard, DKLs23). Share C is encrypted with a password (PBKDF2 + AES-GCM) and downloaded as the recovery kit.
-- **Same key on every chain:** one public key gives a Bitcoin testnet address (P2WPKH) and an EVM address.
-- **Send with Swissquote:** passkey login, then phone + share service sign. The service decodes the transaction itself, signs its own hash of it, refuses sanctioned recipients (mock list) and asks for an extra confirmation above 1,000 USDC.
-- **Send without Swissquote:** if the service is unreachable, the app offers to sign with phone + recovery kit, entirely on the device.
-- **Recovery:** on a new phone, the kit + a mocked identity check start a safety delay (30 s in the demo, 48 h in production). A non-matching selfie (attacker with phone + e-mail) is refused. After the delay a new passkey is registered, kit + Swissquote rebuild Share A, and the client saves a new kit. **Addresses stay the same**; the old phone share no longer works with Swissquote.
-- **Live presentation** at `/present` that shows all of this as it happens.
-
-Funds are needed only for real broadcasts: test USDC and ETH for Base Sepolia, test BTC for testnet4 (**Add funds** links to the faucets).
-
-**Prototype limitation:** Share A sits in `localStorage`. In production it would be encrypted with a key from the passkey (WebAuthn PRF) or kept in the platform keychain.
+- **Create:** name → Face ID → two-party key generation with Swissquote.
+- **Balance card:** USDC, EURC, BTC and ETH; *Send*, *Receive* (with *The same key on other networks*), *Add funds* (faucet links).
+- **Send:** USDC, EURC, ETH or BTC. USDC and EURC are free (Swissquote pays the fee). Every recipient is screened; a scam address shows **Blocked by Swissquote**. A labelled *Demo: use a known scam address* button fills one in.
+- **Your key: two parts:** the devices that hold the client's part (with *Remove*), Swissquote's status, **Add a device** (QR code / link), and **How my key works** (fingerprints of the parts and the messages of the last signature).
+- **Paused / takeover:** if Swissquote is unreachable, a banner explains the pause and counts down the grace period; then **Take over my wallet**.
+- **Remove wallet from this device:** simulates a lost device.
 
 ## Run it
 
-```bash
-# terminal 1 + 2: Swissquote share service and event hub (see services/README.md)
-cd services && npm install && npm run hub
-cd services && npm run share
-
-# terminal 3: the app
-cd app
-npm install
-npm run dev        # http://localhost:5173 (wallet) and /present.html (presentation)
-```
-
-The dev server proxies `/share` → share service (8790) and `/hub` → event hub (8787), so app, presentation and services share one origin.
-
-Passkeys need a secure context: `http://localhost` or `https://`. An IP address over http does **not** work.
-
-### Let others join (phones, team, projector): Cloudflare tunnel
+From the repo root: `scripts/start-demo.sh` (or `--tunnel` for phones). By hand:
 
 ```bash
-# Windows: winget install Cloudflare.cloudflared
-cloudflared tunnel --url http://localhost:5173
+cd services && npm install && npm run hub      # terminal 1
+cd services && npm run share                   # terminal 2
+cd services && npm run escrow                  # terminal 3
+cd app && npm install && npm run dev           # terminal 4 → http://localhost:5173 and /present.html
 ```
 
-cloudflared prints a public `https://….trycloudflare.com` address. That one URL serves the wallet, the presentation (`/present.html`) and, through the proxy, both services. The presentation's **Join** slide shows it as a QR code.
+The dev server proxies `/share`, `/escrow` and `/hub` to the services (ports from `SHARE_PORT`, `ESCROW_PORT`, `HUB_PORT`), so the app, the presentation and the services share one origin. Passkeys need a secure context: `http://localhost` or `https://`, never an IP address. Passkeys are bound to the address: a wallet created on `localhost` does not work on a tunnel URL, and vice versa.
 
-- It works while your laptop and the three processes run.
-- The address changes every time the tunnel restarts, and passkeys are bound to the address: start it once before the demo and keep it running.
-- Some networks buffer the live event stream through the tunnel; the presentation then polls the hub every second automatically.
+**Phones, teammates, projector:** `scripts/start-demo.sh --tunnel` starts a Cloudflare quick tunnel and prints a public `https://….trycloudflare.com` link that serves everything. Keep it running: a new tunnel gets a new address.
 
-> **Passkeys are bound to the domain they were created on.** A wallet created on `localhost:5173` cannot be used on the Vercel URL, and vice versa.
-
-### Demo script
-
-1. Crypto tab → **Create my wallet** → passkey → save the recovery kit.
-2. **Add funds** → faucets; then **Send** USDC on Base or BTC on testnet4. Watch `/present#live`.
-3. Stop the share service (Ctrl+C) → **Send** again → *Sign with my recovery kit instead*.
-4. **Remove wallet from this device** (lost phone) → *Lost your phone?* → kit → *Attacker* (refused) → again with *Take selfie as Anna* → wait → restore → same addresses.
-
-## Phone app (installable web app)
-
-The wallet is a Progressive Web App: no app store needed. Opened over HTTPS on a phone, it can be added to the home screen and then runs full-screen with its own icon.
-
-- **iPhone (Safari):** Share button → **Add to Home Screen**. The app shows this hint itself.
-- **Android (Chrome):** tap **Install** in the app's banner, or browser menu → **Install app**.
-
-Files: `public/manifest.webmanifest`, `public/sw.js` (offline shell; blockchain calls are never cached), `public/*.png`, `src/components/InstallHint.tsx`.
-
-## Deploy to Vercel
-
-1. Sign in at https://vercel.com with GitHub → **Add New… → Project** → import `Blockchain-Hack-Swissquote-Track-`.
-2. **Root Directory:** `app`. Framework preset **Vite** is detected automatically.
-3. Environment variables: `VITE_SHARE_URL` and `VITE_HUB_URL` pointing to the services' public HTTPS addresses.
-4. **Deploy.** Use the production URL for the demo: preview URLs change per deploy, and passkeys are bound to the URL.
-
-Or from your own machine: `cd app && npx vercel --prod`.
-
-## Building blocks
-
-| Part | Choice |
-|------|--------|
-| Threshold signatures | [Silence Labs Silent Shard](https://www.npmjs.com/package/@silencelaboratories/dkls-wasm-ll-web) (DKLs23, WASM), non-commercial license |
-| Passkeys | [SimpleWebAuthn](https://simplewebauthn.dev) (browser + server) |
-| EVM | [viem](https://viem.sh): transaction building, Base Sepolia RPC |
-| Bitcoin | [@scure/btc-signer](https://github.com/paulmillr/scure-btc-signer): SegWit transactions; mempool.space testnet4 API |
-| Recovery kit encryption | WebCrypto PBKDF2-SHA256 (310,000 iterations) + AES-GCM |
-| Token | Circle test USDC `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
+**Installable app:** opened over HTTPS on a phone, the wallet can be added to the home screen (iPhone: Share → *Add to Home Screen*; Android: *Install app*). Files: `public/manifest.webmanifest`, `public/sw.js` (offline shell; blockchain calls are never cached), `src/components/InstallHint.tsx`.
 
 ## Code map
 
-- `src/mpc/`: MPC protocol client, share service API, chains (EVM + Bitcoin), recovery kit, phone storage, end-to-end flows
-- `src/components/mpc/`: wallet UI (create, kit backup, home, send, recovery)
-- `src/sq/`: mocked Swissquote tabs (Home, Trade, Bank, Plan) and the Crypto tab
-- `src/present/`: live presentation (slides, live architecture, activity feed)
-- `src/App.tsx`: Swissquote-style shell with the bottom tab bar
+| Path | Content |
+|---|---|
+| `src/mpc/protocol.ts` | MPC client: two-party key generation, signing with Swissquote (or the escrow agent), signing on the device after a takeover; message transcript |
+| `src/mpc/flows.ts` | Create, log in, send, add / remove devices, take over, part fingerprints |
+| `src/mpc/chains.ts` | EVM (viem) and Bitcoin (@scure/btc-signer) transactions, EIP-3009 authorizations, balances |
+| `src/mpc/networks.ts` | Addresses of the same key on other networks (EVM, Litecoin, Dogecoin, Tron) |
+| `src/mpc/screening.ts` | Recipient screening, with a copy of the list for after a takeover |
+| `src/mpc/store.ts`, `api.ts` | The device's own data; HTTP to the share service, escrow agent and hub |
+| `src/components/mpc/` | Wallet screens: home, send, key parts card, add / join device, key inspector |
+| `src/sq/` | Mocked Swissquote tabs |
+| `src/present/` | Live presentation: slides, live architecture, activity feed, network graph, rehearsal run |
 
-## Live presentation (`/present`)
+## Live presentation (`/present.html`)
 
-- **Keys:** → / Space / PageDown next, ← / PageUp back, `f` full screen, `s` simulated run (rehearsal fallback, marked **SIMULATED**), `c` clear the feed.
-- **Live data:** events from the hub (badge **LIVE**) and transfers read straight from Base Sepolia and Bitcoin testnet4 (badge **ON-CHAIN**). On load the hub replays the session history, so a reload loses nothing.
+Keys: → / Space next, ← back, `f` full screen, `s` simulated run (rehearsal fallback, marked **SIMULATED**), `c` clear the feed. Events come from the hub (badge **LIVE**); transfers of known wallets are read from the chains (badge **ON-CHAIN**). The hub replays the session history on load.
+
+## Environment
+
+Optional, in `app/.env.local` (see `.env.example`): `VITE_RPC_URL`, `VITE_SHARE_URL`, `VITE_ESCROW_URL`, `VITE_HUB_URL` (only when the services run elsewhere), `VITE_MEMPOOL_API`.

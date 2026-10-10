@@ -10,13 +10,6 @@ dist/
 build/
 *.tsbuildinfo
 
-# Foundry / Hardhat
-out/
-cache/
-broadcast/
-artifacts/
-typechain-types/
-
 # OS / editor
 .DS_Store
 .vscode/

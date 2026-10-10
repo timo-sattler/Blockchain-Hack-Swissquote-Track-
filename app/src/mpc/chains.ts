@@ -17,12 +17,17 @@ import {
   type Address,
   type Hex,
 } from 'viem'
-import { MEMPOOL_API, USDC } from '../config'
+import { EURC, MEMPOOL_API, USDC } from '../config'
 import { publicClient } from '../wallet'
 import { toB64 } from './bytes'
 import type { Signature } from './protocol'
 
-export type Asset = 'USDC' | 'ETH' | 'BTC'
+export type Asset = 'USDC' | 'EURC' | 'ETH' | 'BTC'
+export type Stablecoin = 'USDC' | 'EURC'
+
+/** Stablecoins Swissquote co-signs and sponsors; for EIP-3009 the EIP-712 domain name is the token name. */
+export const STABLECOINS: Record<Stablecoin, Address> = { USDC, EURC }
+export const isStablecoin = (asset: Asset): asset is Stablecoin => asset === 'USDC' || asset === 'EURC'
 
 const Fn = secp256k1.Point.Fn
 
@@ -36,12 +41,12 @@ export const compressedKey = (publicKey: Uint8Array) => secp256k1.Point.fromByte
 
 // ---------- EVM (Base Sepolia) ----------
 
-export async function buildEvmTx(from: Address, asset: 'USDC' | 'ETH', to: string, amount: string): Promise<Hex> {
+export async function buildEvmTx(from: Address, asset: Stablecoin | 'ETH', to: string, amount: string): Promise<Hex> {
   if (!isAddress(to)) throw new Error('Recipient is not a valid 0x address.')
   const call =
     asset === 'ETH'
       ? { to: to as Address, value: parseEther(amount), data: undefined }
-      : { to: USDC, value: 0n, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to as Address, parseUnits(amount, 6)] }) }
+      : { to: STABLECOINS[asset], value: 0n, data: encodeFunctionData({ abi: erc20Abi, functionName: 'transfer', args: [to as Address, parseUnits(amount, 6)] }) }
   const [nonce, fees] = await Promise.all([
     publicClient.getTransactionCount({ address: from, blockTag: 'pending' }),
     publicClient.estimateFeesPerGas(),
@@ -52,7 +57,7 @@ export async function buildEvmTx(from: Address, asset: 'USDC' | 'ETH', to: strin
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     if (/insufficient funds|exceeds balance/i.test(message))
-      throw new Error(asset === 'USDC' ? 'Not enough USDC, or no ETH to pay the network fee.' : 'Not enough ETH for this amount plus the network fee.')
+      throw new Error(asset === 'ETH' ? 'Not enough ETH for this amount plus the network fee.' : `Not enough ${asset}, or no ETH to pay the network fee.`)
     throw e
   }
   return serializeTransaction({
@@ -70,10 +75,10 @@ export const evmHash = (unsignedTx: Hex) => keccak256(unsignedTx)
 
 // ---------- Gasless USDC (EIP-3009 transferWithAuthorization, relayed by Swissquote) ----------
 
-export type UsdcAuthorization = { to: Address; value: string; validAfter: string; validBefore: string; nonce: Hex }
+export type UsdcAuthorization = { to: Address; value: string; validAfter: string; validBefore: string; nonce: Hex; token: Address }
 
 /** "Move this much of my USDC to `to`", valid for 10 minutes, usable exactly once (random nonce). */
-export function buildUsdcAuthorization(to: string, amount: string): UsdcAuthorization {
+export function buildUsdcAuthorization(to: string, amount: string, token: Address = USDC): UsdcAuthorization {
   if (!isAddress(to)) throw new Error('Recipient is not a valid 0x address.')
   const now = Math.floor(Date.now() / 1000)
   return {
@@ -82,13 +87,14 @@ export function buildUsdcAuthorization(to: string, amount: string): UsdcAuthoriz
     validAfter: '0',
     validBefore: String(now + 600),
     nonce: toHex(crypto.getRandomValues(new Uint8Array(32))),
+    token,
   }
 }
 
 /** The same EIP-712 hash Swissquote computes; the phone compares both before co-signing. */
 export function usdcAuthorizationHash(from: Address, auth: UsdcAuthorization): Hex {
   return hashTypedData({
-    domain: { name: 'USDC', version: '2', chainId: 84532, verifyingContract: USDC },
+    domain: { name: auth.token.toLowerCase() === EURC.toLowerCase() ? 'EURC' : 'USDC', version: '2', chainId: 84532, verifyingContract: auth.token },
     types: {
       TransferWithAuthorization: [
         { name: 'from', type: 'address' },
@@ -128,11 +134,12 @@ export async function sendEvmTx(unsignedTx: Hex, sig: Signature, from: Address):
 }
 
 export async function evmBalances(address: Address) {
-  const [eth, usdc] = await Promise.all([
+  const [eth, usdc, eurc] = await Promise.all([
     publicClient.getBalance({ address }),
     publicClient.readContract({ address: USDC, abi: erc20Abi, functionName: 'balanceOf', args: [address] }),
+    publicClient.readContract({ address: EURC, abi: erc20Abi, functionName: 'balanceOf', args: [address] }),
   ])
-  return { eth, usdc }
+  return { eth, usdc, eurc }
 }
 
 // ---------- Bitcoin testnet4 ----------

@@ -22,28 +22,30 @@ function Frame({ kicker, title, children }: { kicker: string; title: ReactNode; 
 
 function Triangle() {
   return (
-    <svg className="triangle" viewBox="0 0 640 540" role="img" aria-label="Three key shares; any two can sign">
+    <svg className="triangle" viewBox="0 0 640 540" role="img" aria-label="One key in two parts: both sign every payment">
       <g className="tri-edges">
         <line x1="110" y1="130" x2="530" y2="130" />
-        <line x1="110" y1="130" x2="320" y2="440" />
-        <line x1="530" y1="130" x2="320" y2="440" />
+        <line x1="110" y1="192" x2="110" y2="262" />
+        <line x1="110" y1="306" x2="110" y2="352" />
+        <line x1="530" y1="192" x2="530" y2="378" strokeDasharray="10 10" />
       </g>
       <text x="320" y="116" className="tri-edge-label" textAnchor="middle">
-        Everyday payments
+        Every payment: both parts
       </text>
-      <text x="196" y="300" className="tri-edge-label" textAnchor="end">
-        Without
+      <text x="508" y="262" className="tri-edge-label" textAnchor="end">
+        copy of B, released only if
       </text>
-      <text x="196" y="326" className="tri-edge-label" textAnchor="end">
-        Swissquote
-      </text>
-      <text x="444" y="312" className="tri-edge-label" textAnchor="start">
-        Recovery
+      <text x="508" y="288" className="tri-edge-label" textAnchor="end">
+        Swissquote is gone 6 months
       </text>
       <g className="tri-node a">
         <circle cx="110" cy="130" r="62" />
         <text x="110" y="124" className="tri-letter">A</text>
-        <text x="110" y="152" className="tri-name">Phone / laptop</text>
+        <text x="110" y="152" className="tri-name">Your part</text>
+      </g>
+      <g className="tri-node a">
+        <text x="110" y="292" className="tri-name">Laptop · Face ID</text>
+        <text x="110" y="382" className="tri-name">Phone · identical copy</text>
       </g>
       <g className="tri-node b">
         <circle cx="530" cy="130" r="62" />
@@ -51,11 +53,11 @@ function Triangle() {
         <text x="530" y="152" className="tri-name">Swissquote</text>
       </g>
       <g className="tri-node c">
-        <circle cx="320" cy="440" r="62" />
-        <text x="320" y="434" className="tri-letter">C</text>
-        <text x="320" y="462" className="tri-name">USB kit</text>
+        <circle cx="530" cy="440" r="62" />
+        <text x="530" y="434" className="tri-letter">⚖</text>
+        <text x="530" y="462" className="tri-name">Escrow agent</text>
       </g>
-      <text x="320" y="532" className="tri-caption">Any two sign. No corner alone can do anything.</text>
+      <text x="320" y="532" className="tri-caption">Neither part can sign alone. Swissquote screens every payment.</text>
     </svg>
   )
 }
@@ -63,9 +65,9 @@ function Triangle() {
 const CHECKLIST: { label: string; done: (items: FeedItem[]) => boolean }[] = [
   { label: 'Create wallet', done: (i) => i.some((e) => e.type === 'wallet_created') },
   { label: 'Sign & send', done: (i) => i.some((e) => e.type === 'tx_broadcast') },
-  { label: 'Works without Swissquote', done: (i) => i.some((e) => e.type === 'signing' && e.parties.includes('C') && e.parties.includes('A')) },
-  { label: 'Attacker refused', done: (i) => i.some((e) => e.type === 'recovery_refused') },
-  { label: 'Recovered, same address', done: (i) => i.some((e) => e.type === 'recovery_completed') },
+  { label: 'Malicious address blocked', done: (i) => i.some((e) => e.type === 'payment_blocked') },
+  { label: 'Second device added', done: (i) => i.some((e) => e.type === 'device_added') },
+  { label: 'Lost device removed', done: (i) => i.some((e) => e.type === 'device_removed') },
 ]
 
 export const SLIDES: Slide[] = [
@@ -115,26 +117,26 @@ export const SLIDES: Slide[] = [
     id: 'solution',
     title: 'Our answer',
     render: () => (
-      <Frame kicker="Our answer: 2-of-3 MPC" title="One key, three shares, any two sign">
+      <Frame kicker="Our answer: two-party MPC" title="One key, two parts, both sign every payment">
         <div className="split">
           <Triangle />
           <ul className="points">
             <li>
-              <b className="dot a" /> <strong>Phone or laptop (A)</strong>: Face ID / Touch ID unlocks it. Used for every payment.
+              <b className="dot a" /> <strong>Your part (A)</strong>: on your laptop, with an identical copy on your phone. Each device unlocks it with its own Face ID.
             </li>
             <li>
-              <b className="dot b" /> <strong>Swissquote (B)</strong>: co-signs and checks, never alone.
+              <b className="dot b" /> <strong>Swissquote (B)</strong>: needed for every payment. Blocks malicious addresses, pays the fee, never acts alone.
             </li>
             <li>
-              <b className="dot c" /> <strong>Recovery kit (C)</strong>: the client's encrypted backup on a USB stick. Trusted friends can hold a password-locked copy.
+              <b className="dot c" /> <strong>Escrow agent</strong>: an independent notary with a copy of B. Only if Swissquote is gone for six months does it hand B to you.
             </li>
             <li className="highlight">
-              <strong>Safer and free through Swissquote:</strong> it blocks malicious addresses and pays the USDC network fee, but it can
-              never block you from your own money.
+              <strong>Safer and less pricey:</strong> every payment passes Swissquote's screening, and USDC transfers are free because
+              Swissquote pays the network fee.
             </li>
             <li className="highlight">
-              <strong>One key for every coin.</strong> The signature is plain ECDSA, so the same wallet works on Bitcoin and every
-              EVM chain.
+              <strong>One key for every coin.</strong> Today USDC, EURC and ETH on Base, and Bitcoin. The same key already has addresses
+              on Ethereum, Arbitrum, Optimism, Polygon, BNB Chain, Avalanche, Litecoin, Dogecoin and Tron, with no contract to deploy.
             </li>
             <li className="muted">Threshold signatures with Silence Labs Silent Shard (DKLs23). No homemade cryptography.</li>
           </ul>
@@ -218,26 +220,26 @@ export const SLIDES: Slide[] = [
           <div>
             <h2>Who could steal funds?</h2>
             <p>
-              Only someone with two shares: the device share (locked behind Face ID) plus the USB kit and its password, or a recovery that
-              passes re-KYC and a 48 h delay with alerts to every device.
+              Nobody with one part. A thief needs one of your devices and its Face ID, and still goes through Swissquote's screening. A lost
+              device is removed in one tap: Swissquote then refuses its passkey.
             </p>
           </div>
           <div>
             <h2>Who could lock the client out?</h2>
-            <p>Nobody. Swissquote co-signs by default, for screening and free fees, but it is never a gatekeeper: device + USB kit sign without it, also if Swissquote disappears.</p>
+            <p>Swissquote could refuse to co-sign while it operates; that is how it blocks malicious payments. If it fails or disappears, the wallet is paused and after a six-month grace period the escrow agent hands its copy of B to your device.</p>
           </div>
           <div>
             <h2>Could Swissquote move funds?</h2>
             <p>
-              <strong>Alone: no</strong>, it holds 1 of 3 shares. <strong>With a partner: no.</strong> Friends' backup pieces are useless
-              without the client's password, and the escrow agent holds a copy of the same share B, not a second one.
+              <strong>No.</strong> It holds one of two parts. The escrow agent holds a copy of the same part B, so Swissquote and the agent
+              together still cannot sign without you.
             </p>
           </div>
         </div>
         <div className="limits">
           <strong>Honest limits</strong>
-          <span>Recovery rules are enforced by the share holders' software, not on-chain.</span>
-          <span>Old shares stay valid with each other: recovery issues a new kit, a stolen phone triggers a sweep to a new key.</span>
+          <span>Losing every device that holds your part means losing the wallet: add a second device.</span>
+          <span>While Swissquote is unreachable the wallet is paused (grace period: six months in production, seconds in the demo).</span>
           <span>The MPC library is licensed for non-commercial use; a launch needs a commercial license.</span>
         </div>
       </Frame>
@@ -259,7 +261,7 @@ export const SLIDES: Slide[] = [
           </div>
           <div className="card">
             <h2>Sending institution?</h2>
-            <p>For payments to third parties the client initiates and signs. Swissquote's co-signature is an automated check the client can bypass with phone + kit, so we argue Swissquote is not the sender. To validate with counsel.</p>
+            <p>Swissquote co-signs and screens every payment, so we treat it as the sending institution: it attaches originator data for transfers to other regulated providers. It still cannot move funds alone, so it is not custody. To validate with counsel.</p>
           </div>
         </div>
       </Frame>
@@ -277,7 +279,7 @@ export const SLIDES: Slide[] = [
           </div>
           <div className="card">
             <h2>Revenue</h2>
-            <p>Buy and sell, swaps and CHF on/off-ramp in the app. Premium recovery and crypto inheritance as a paid service.</p>
+            <p>Buy and sell, swaps and CHF on/off-ramp in the app. Premium tiers: higher free-transfer limits, more devices, family wallets.</p>
           </div>
           <div className="card">
             <h2>Lower cost and risk</h2>
@@ -285,7 +287,7 @@ export const SLIDES: Slide[] = [
           </div>
           <div className="card">
             <h2>New clients</h2>
-            <p>Crypto natives who would never hand their coins to a bank, but want a safety net.</p>
+            <p>Crypto natives who would never hand their coins to a bank, but want scam protection and a Swiss counterparty.</p>
           </div>
         </div>
       </Frame>
@@ -301,12 +303,12 @@ export const SLIDES: Slide[] = [
             <h2>Bonus topics</h2>
             <ul className="bullets">
               <li>
-                <strong>Gasless (built):</strong> USDC sent through Swissquote is free. The client signs an authorization (EIP-3009),
-                Swissquote submits it and pays the fee, with a daily limit per wallet.
+                <strong>Gasless (built):</strong> USDC and EURC sent through Swissquote are free. The client signs an authorization
+                (EIP-3009), Swissquote submits it and pays the fee, with a daily limit per wallet.
               </li>
               <li>
                 <strong>Compliance (built):</strong> Swissquote blocks payments to sanctioned or scam addresses before anything is signed
-                (mock list) and asks for an extra confirmation above 1,000 USDC.
+                (mock list) and asks for an extra confirmation above 1,000 USDC or EURC.
               </li>
             </ul>
           </div>
@@ -314,8 +316,8 @@ export const SLIDES: Slide[] = [
             <h2>Roadmap</h2>
             <ul className="bullets">
               <li>Solana and other Ed25519 chains with an EdDSA MPC library.</li>
-              <li>On-chain recovery rules on top: Miniscript on Bitcoin, a smart account on EVM.</li>
-              <li>Share B in an HSM or attested enclave; commercial MPC license; audit.</li>
+              <li>Your part encrypted with the passkey (WebAuthn PRF) or the phone's keychain.</li>
+              <li>Swissquote's part in an HSM; escrow with a notary; commercial MPC license; audit.</li>
             </ul>
           </div>
         </div>

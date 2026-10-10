@@ -1,20 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Address } from 'viem'
 import { BTC_EXPLORER, EXPLORER } from '../../config'
 import { formatEth, formatUsdc, short, timeAgo } from '../../lib/format'
 import { shareGet } from '../../mpc/api'
-import { backupAvailable } from '../../mpc/backup'
 import { refreshBlocklist } from '../../mpc/screening'
 import { btcBalance, evmBalances } from '../../mpc/chains'
 import type { PhoneWallet } from '../../mpc/store'
 import { AddFundsSheet } from '../AddFundsSheet'
-import { ArrowDown, ArrowUp, Bank, Copy, External, Fingerprint, Plus, Shield } from '../icons'
+import { ArrowDown, ArrowUp, Copy, Plus } from '../icons'
 import { ReceiveSheet } from '../ReceiveSheet'
-import { FriendBackups } from './FriendBackups'
+import { EVM_NETWORKS, otherNetworkAddresses } from '../../mpc/networks'
+import { KeyPartsCard, useKeyParts, WalletNotices } from './KeyPartsCard'
 import { MpcSendSheet, type SentTransfer } from './MpcSendSheet'
-import { RecoveryAlert, ReplacedCard, useWalletStatus } from './RecoveryWatch'
 
-type Balances = { usdc: bigint; eth: bigint; btc: bigint }
+type Balances = { usdc: bigint; eurc: bigint; eth: bigint; btc: bigint }
 type SheetName = 'send' | 'receive' | 'add' | null
 
 const historyKey = (walletId: string) => `sq-mpc:history:${walletId}`
@@ -30,24 +29,21 @@ const formatBtc = (sats: bigint) => (Number(sats) / 1e8).toLocaleString('en-US',
 
 export function MpcHome({
   wallet,
-  kitSavedAt,
+  fresh,
   onToast,
   onForget,
-  onReplaceKit,
+  onWalletChange,
 }: {
   wallet: PhoneWallet
-  kitSavedAt: number | null
+  fresh: boolean
   onToast: (m: string) => void
   onForget: () => void
-  onReplaceKit: () => void
+  onWalletChange: (w: PhoneWallet) => void
 }) {
   const [balances, setBalances] = useState<Partial<Balances>>({})
   const [history, setHistory] = useState<SentTransfer[]>(() => loadHistory(wallet.walletId))
   const [sheet, setSheet] = useState<SheetName>(null)
   const [swissquoteOnline, setSwissquoteOnline] = useState<boolean | null>(null)
-  const { status, setStatus } = useWalletStatus(wallet.walletId)
-  // Swissquote issued newer shares (recovery or pairing elsewhere): this phone's share is outdated.
-  const replaced = !wallet.independent && !!status && status.epoch > (wallet.epoch ?? 1)
 
   const refresh = useCallback(async () => {
     const [evm, btc] = await Promise.allSettled([evmBalances(wallet.evmAddress as Address), btcBalance(wallet.btcAddress)])
@@ -95,22 +91,20 @@ export function MpcHome({
     setTimeout(refresh, 4000)
   }
 
+  const parts = useKeyParts(wallet, swissquoteOnline, onToast, onWalletChange)
+  const other = useMemo(() => otherNetworkAddresses(wallet.publicKey), [wallet.publicKey])
   const [whole, cents] = balances.usdc !== undefined ? formatUsdc(balances.usdc).split('.') : ['–', '––']
 
   return (
     <>
-      {replaced ? (
-        <ReplacedCard />
-      ) : (
-        <RecoveryAlert
-          walletId={wallet.walletId}
-          recovery={status?.recovery ?? null}
-          onCancelled={(next) => {
-            setStatus(next)
-            onToast('Recovery cancelled')
-          }}
-        />
+      {fresh && (
+        <div className="welcome">
+          <strong>Your wallet is ready 🎉</strong>
+          <span>Your key part is on this device, Swissquote holds the other part. Tip: add your phone or a second laptop below, so you never depend on one device.</span>
+        </div>
       )}
+
+      <WalletNotices parts={parts} />
 
       <section className="balance-card">
         <div className="balance-top">
@@ -128,11 +122,12 @@ export function MpcHome({
           <span className="cents">.{cents}</span>
         </p>
         <p className="balance-sub">
+          {balances.eurc !== undefined ? `€${formatUsdc(balances.eurc)} EURC` : '… EURC'} ·{' '}
           {balances.btc !== undefined ? `${formatBtc(balances.btc)} BTC` : '… BTC'} ·{' '}
           {balances.eth !== undefined ? `${formatEth(balances.eth)} ETH for gas` : '… ETH'}
         </p>
         <div className="actions">
-          <button onClick={() => setSheet('send')} disabled={replaced}>
+          <button onClick={() => setSheet('send')}>
             <span>
               <ArrowUp />
             </span>
@@ -153,67 +148,7 @@ export function MpcHome({
         </div>
       </section>
 
-      <section className="card control">
-        <div className="card-head">
-          <h2>Who holds your key shares</h2>
-          <span className="badge ok">Any 2 of 3 sign</span>
-        </div>
-        <ul className="control-list">
-          <li>
-            <span className="control-icon you">
-              <Fingerprint />
-            </span>
-            <div>
-              <strong>A · This phone</strong>
-              <span>Unlocked with Face ID for every payment</span>
-            </div>
-            <span className="pill ok">Here</span>
-          </li>
-          <li>
-            <span className="control-icon">
-              <Bank />
-            </span>
-            <div>
-              <strong>B · Swissquote</strong>
-              <span>Checks and co-signs. Cannot act alone</span>
-            </div>
-            <span className={`pill ${swissquoteOnline ? 'ok' : swissquoteOnline === false ? 'down' : ''}`}>
-              {swissquoteOnline === null ? '…' : swissquoteOnline ? 'Online' : 'Offline'}
-            </span>
-          </li>
-          <li>
-            <span className="control-icon">
-              <Shield />
-            </span>
-            <div>
-              <strong>C · Your recovery kit</strong>
-              <span>{kitSavedAt ? `Saved ${timeAgo(kitSavedAt)}` : 'Encrypted file you keep'}</span>
-            </div>
-            <button
-              className="pill action"
-              disabled={replaced}
-              title="Kit lost or stolen? Issue a new one; the old kit stops working."
-              onClick={() => {
-                if (confirm('Replace your recovery kit? Phone and Swissquote issue new shares, and your old kit stops working. Use this if your kit was lost or stolen.')) onReplaceKit()
-              }}
-            >
-              Replace
-            </button>
-          </li>
-        </ul>
-        <p className="fineprint left">
-          Same key on every chain:{' '}
-          <a href={`${BTC_EXPLORER}/address/${wallet.btcAddress}`} target="_blank" rel="noreferrer">
-            {short(wallet.btcAddress)} <External />
-          </a>{' '}
-          ·{' '}
-          <a href={`${EXPLORER}/address/${wallet.evmAddress}`} target="_blank" rel="noreferrer">
-            {short(wallet.evmAddress)} <External />
-          </a>
-        </p>
-      </section>
-
-      {backupAvailable && !replaced && !wallet.independent && <FriendBackups wallet={wallet} onToast={onToast} />}
+      <KeyPartsCard parts={parts} />
 
       <section className="card">
         <div className="card-head">
@@ -246,18 +181,24 @@ export function MpcHome({
       <button
         className="text-btn danger"
         onClick={() => {
-          if (confirm('Remove this wallet from the device? You will need your recovery kit to get it back.')) onForget()
+          if (confirm('Remove the wallet from this device? It stays on your other devices; to use it here again, add this device from one of them.')) onForget()
         }}
       >
-        Remove wallet from this device (simulate a lost phone)
+        Remove wallet from this device (simulate a lost device)
       </button>
 
       {sheet === 'send' && <MpcSendSheet wallet={wallet} onClose={() => setSheet(null)} onSent={onSent} />}
       {sheet === 'receive' && (
         <ReceiveSheet
           options={[
-            { label: 'USDC / ETH', network: 'Base Sepolia', address: wallet.evmAddress },
+            { label: 'USDC · EURC · ETH', network: 'Base Sepolia', address: wallet.evmAddress },
             { label: 'Bitcoin', network: 'Bitcoin testnet4', address: wallet.btcAddress },
+          ]}
+          others={[
+            { name: EVM_NETWORKS.join(' · '), detail: 'The same 0x address on every Ethereum-type network, for any token there', address: wallet.evmAddress },
+            { name: 'Litecoin', detail: 'SegWit address from the same key', address: other.litecoin },
+            { name: 'Dogecoin', detail: 'Address from the same key', address: other.dogecoin },
+            { name: 'Tron', detail: 'Address from the same key (USDT on Tron)', address: other.tron },
           ]}
           onCopy={copy}
           onClose={() => setSheet(null)}

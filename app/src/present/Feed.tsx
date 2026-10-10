@@ -5,13 +5,11 @@ const short = (value: string) => (value.length > 14 ? `${value.slice(0, 8)}…${
 function describe(item: FeedItem): { icon: string; title: string; detail?: string; tone?: 'good' | 'bad' } {
   switch (item.type) {
     case 'wallet_created':
-      return { icon: '✦', title: `Wallet created${item.name ? ` for ${item.name}` : ''}: 3 key shares`, detail: `BTC ${short(item.btcAddress)} · EVM ${short(item.evmAddress)}`, tone: 'good' }
-    case 'signing': {
-      const key = [...item.parties].sort().join('')
-      if (key === 'AB') return { icon: '✍', title: 'Phone + Swissquote co-signed' }
-      if (key === 'AC') return { icon: '✍', title: 'Phone + recovery kit signed', detail: 'No Swissquote involved', tone: 'good' }
-      return { icon: '✍', title: 'Swissquote + recovery kit signed' }
-    }
+      return { icon: '✦', title: `Wallet created${item.name ? ` for ${item.name}` : ''}: one key, two parts`, detail: `BTC ${short(item.btcAddress)} · EVM ${short(item.evmAddress)}`, tone: 'good' }
+    case 'signing':
+      return item.alone
+        ? { icon: '✍', title: 'Signed on the device alone', detail: "Both parts on the device after the grace period", tone: 'good' }
+        : { icon: '✍', title: 'Client part + Swissquote co-signed', detail: 'Screened by Swissquote first' }
     case 'tx_broadcast':
       return {
         icon: '↗',
@@ -20,41 +18,25 @@ function describe(item: FeedItem): { icon: string; title: string; detail?: strin
         tone: 'good',
       }
     case 'service_offline':
-      return { icon: '⏻', title: 'Swissquote share service offline', tone: 'bad' }
+      return { icon: '⏻', title: 'Swissquote share service offline', detail: 'Wallets are paused; the grace period starts', tone: 'bad' }
     case 'service_online':
       return { icon: '⏻', title: 'Swissquote share service back online' }
-    case 'recovery_requested':
-      return item.by === 'attacker'
-        ? { icon: '⚠', title: 'Recovery requested with stolen phone + e-mail', tone: 'bad' }
-        : { icon: '↺', title: 'Recovery requested: new phone + kit' }
-    case 'recovery_refused':
-      return { icon: '⛔', title: 'Recovery refused', detail: item.reason, tone: 'good' }
-    case 'funded':
-      return { icon: '🎁', title: `Welcome bonus${item.name ? ` for ${item.name}` : ''}`, detail: `${item.usdc} USDC + ${item.eth} ETH for gas from the Swissquote treasury`, tone: 'good' }
-    case 'device_paired':
-      return { icon: '⇄', title: `Device re-paired${item.name ? ` for ${item.name}` : ''}`, detail: 'Passkey + recovery kit issued a new phone share', tone: 'good' }
-    case 'recovery_completed':
-      return { icon: '✓', title: 'Recovery complete', detail: 'New phone share, same addresses', tone: 'good' }
-    case 'recovery_cancelled':
-      return { icon: '✋', title: `Recovery cancelled by the owner${item.name ? ` (${item.name})` : ''}`, detail: 'Their current passkey vetoed it during the delay', tone: 'good' }
-    case 'replaced_device_refused':
-      return { icon: '⛔', title: 'Replaced phone tried to sign', detail: 'Its old key share no longer works with Swissquote', tone: 'good' }
     case 'payment_blocked':
       return { icon: '⛔', title: `Payment blocked${item.name ? ` for ${item.name}` : ''}: ${short(item.to)}`, detail: `Recipient is ${item.reason}. Swissquote refused to co-sign; nothing was signed`, tone: 'bad' }
-    case 'inbox_registered':
-      return { icon: '✉', title: `${item.name ?? 'A client'} can now hold friends' backups`, detail: 'Inbox key published on Base Sepolia, signed by their own wallet', tone: 'good' }
-    case 'backup_onchain':
-      return { icon: '⛓', title: `Kit backed up to ${item.friends} friends${item.name ? ` by ${item.name}` : ''}`, detail: 'On Base Sepolia: locked with the password, one encrypted piece per friend · fees paid by Swissquote', tone: 'good' }
-    case 'piece_returned':
-      return { icon: '↩', title: `${item.name ?? 'A friend'} gave a backup piece back`, detail: 'Encrypted to the recovering phone only, on Base Sepolia', tone: 'good' }
-    case 'kit_replaced':
-      return { icon: '⟳', title: `Recovery kit replaced${item.name ? ` for ${item.name}` : ''}`, detail: 'Phone + Swissquote issued new shares: the old kit is worthless', tone: 'good' }
+    case 'device_added':
+      return { icon: '⧉', title: `${item.name ?? 'A client'} added a device: ${item.device}`, detail: 'Identical copy of the key part, its own Face ID passkey. Swissquote could not read the copy', tone: 'good' }
+    case 'device_removed':
+      return { icon: '⊘', title: `${item.name ?? 'A client'} removed a device: ${item.device}`, detail: 'Swissquote refuses its passkey: that copy of the key part is now useless' }
+    case 'replaced_device_refused':
+      return { icon: '⛔', title: `Outdated device refused${item.name ? ` for ${item.name}` : ''}`, tone: 'bad' }
     case 'escrow_deposited':
-      return { icon: '⚖', title: 'Escrow agent holds a copy of Share B', detail: 'Independent notary, released only if Swissquote is gone' }
-    case 'escrow_released':
-      return { icon: '⚖', title: `Escrow released Share B${item.name ? ` to ${item.name}` : ''}`, detail: 'Swissquote is gone: kit + escrow restore the wallet', tone: 'good' }
+      return { icon: '⚖', title: "Escrow agent holds a copy of Swissquote's part", detail: 'Released only after the grace period, if Swissquote is gone' }
     case 'escrow_refused':
-      return { icon: '⛔', title: 'Escrow release refused', detail: item.reason, tone: 'good' }
+      return { icon: '⚖', title: 'Escrow agent refused', detail: item.reason, tone: 'bad' }
+    case 'takeover_released':
+      return { icon: '⚖', title: `Grace period over${item.name ? ` for ${item.name}` : ''}`, detail: "The escrow agent handed its copy of Swissquote's part to the client's device: it now signs alone", tone: 'good' }
+    case 'funded':
+      return { icon: '🎁', title: `Welcome bonus for ${item.name ?? short(item.to)}`, detail: `${item.usdc} USDC + ${item.eth} ETH from Swissquote's treasury (testnet)` }
   }
 }
 
