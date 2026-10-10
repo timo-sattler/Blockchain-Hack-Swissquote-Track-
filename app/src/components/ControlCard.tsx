@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { pad, type Hex } from 'viem'
 import { EXPLORER, RECOVERY_MODULE } from '../config'
 import { formatDuration } from '../lib/format'
-import { readRecovery, type RecoveryState } from '../recovery'
+import { loadGuardianLabels, readRecovery, type RecoveryState } from '../recovery'
 import { getOnChainOwners, type SmartAccount } from '../wallet'
 import { Bank, Check, External, Fingerprint, Users } from './icons'
 import { RecoverySetupSheet } from './RecoverySetupSheet'
@@ -53,8 +53,17 @@ export function ControlCard({
 
   useEffect(() => {
     // Read independently: if the recovery contract is unreachable, ownership still shows.
-    loadRecovery().catch(() => {})
+    const refresh = () => {
+      loadRecovery().catch(() => {})
+      loadOwners()
+    }
+    refresh()
+    // Keep in sync with changes made from other devices (or reads that lagged behind a transaction).
+    const timer = setInterval(refresh, 15_000)
+    return () => clearInterval(timer)
+  }, [account, passkeyPublicKey, refreshKey, loadRecovery])
 
+  function loadOwners() {
     getOnChainOwners(account.address)
       .then((owners) => {
         if (owners === null) return setStatus({ kind: 'not-deployed' })
@@ -64,8 +73,18 @@ export function ControlCard({
         if (!hasPasskey) return setStatus({ kind: 'revoked' })
         setStatus(spenders.length === 1 ? { kind: 'verified' } : { kind: 'other-owners', count: spenders.length })
       })
-      .catch(() => setStatus({ kind: 'loading' }))
-  }, [account, passkeyPublicKey, refreshKey, loadRecovery])
+      .catch(() => {
+        // Keep the last known status when a background read fails.
+      })
+  }
+
+  // Names are remembered on the device that set the guardians up; the chain only knows addresses.
+  const labels = recovery?.enabled ? loadGuardianLabels(account.address) : []
+  // In setup order (kit, Swissquote, then people), not the contract's sorted address order.
+  const guardianNames = labels
+    .filter((l) => recovery?.guardians.some((g) => g.toLowerCase() === l.address.toLowerCase()))
+    .map((l) => l.name)
+    .join(' · ')
 
   if (status.kind === 'revoked')
     return (
@@ -119,16 +138,13 @@ export function ControlCard({
             <span>
               {recovery?.enabled
                 ? `Any ${recovery.threshold} of ${recovery.guardians.length} can replace a lost passkey after ${formatDuration(recovery.delay)} you can cancel`
-                : '2 of 3 can replace a lost passkey, after a delay you can cancel'}
+                : 'Your kit, Swissquote and people you trust can replace a lost passkey, after a delay you can cancel'}
             </span>
+            {guardianNames && <span className="guardian-names">{guardianNames}</span>}
           </div>
-          {recovery?.enabled ? (
-            <span className="pill ok">On</span>
-          ) : (
-            <button className="pill soon" onClick={openSetup}>
-              Set up
-            </button>
-          )}
+          <button className="pill soon" onClick={openSetup}>
+            {recovery?.enabled ? 'Manage' : 'Set up'}
+          </button>
         </li>
       </ul>
       {setupError && <p className="error small">{setupError}</p>}
@@ -147,6 +163,7 @@ export function ControlCard({
       {settingUp && recovery && (
         <RecoverySetupSheet
           account={account}
+          current={recovery}
           moduleIsOwner={recovery.moduleIsOwner}
           onClose={() => setSettingUp(false)}
           onDone={onChanged}

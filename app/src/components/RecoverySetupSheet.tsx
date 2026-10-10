@@ -1,43 +1,81 @@
 import { useState } from 'react'
-import { isAddress, type Address, type Hash } from 'viem'
+import { getAddress, isAddress, type Address, type Hash } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
 import { EXPLORER, RECOVERY_DELAY } from '../config'
 import { formatDuration, short } from '../lib/format'
-import { createRecoveryKit, setupCalls, swissquote } from '../recovery'
+import {
+  createRecoveryKit,
+  loadGuardianLabels,
+  MAX_CONTACTS,
+  parseRecoveryKit,
+  saveGuardianLabels,
+  setupCalls,
+  suggestedThreshold,
+  swissquote,
+  type GuardianLabel,
+  type RecoveryState,
+} from '../recovery'
 import { CLIENT } from '../sq/mockData'
 import { explainError, sendCalls, type SmartAccount } from '../wallet'
 import { Bank, Check, External, Fingerprint, Spinner, Users } from './icons'
 import { Sheet } from './Sheet'
 
-type Step = 'intro' | 'kit' | 'contact' | 'confirm' | 'done'
+type Step = 'intro' | 'kit' | 'contacts' | 'confirm' | 'done'
+type Contact = { name: string; address: string }
 
+/** First-time setup, or changing the guardians later (then the current recovery kit is kept). */
 export function RecoverySetupSheet({
   account,
+  current,
   moduleIsOwner,
   onClose,
   onDone,
 }: {
   account: SmartAccount
+  current: RecoveryState
   moduleIsOwner: boolean
   onClose: () => void
   onDone: () => void
 }) {
+  const editing = current.enabled
+  // What this device remembers about the guardians that are on-chain right now.
+  const [known] = useState(() =>
+    editing
+      ? loadGuardianLabels(account.address).filter((g) =>
+          current.guardians.some((onChain) => onChain.toLowerCase() === g.address.toLowerCase()),
+        )
+      : [],
+  )
+  const [keptKit, setKeptKit] = useState<Address | null>(known.find((g) => g.kind === 'kit')?.address ?? null)
+
   const [step, setStep] = useState<Step>('intro')
-  const [kit] = useState(() => createRecoveryKit(account.address))
+  const [newKit] = useState(() => createRecoveryKit(account.address))
+  const [useNewKit, setUseNewKit] = useState(!keptKit)
   const [kitSaved, setKitSaved] = useState(false)
   const [swissquoteGuardian, setSwissquoteGuardian] = useState<Address | null>(null)
-  const [contact, setContact] = useState('')
+  const [contacts, setContacts] = useState<Contact[]>(() => {
+    const existing = known.filter((g) => g.kind === 'contact').map((g) => ({ name: g.name, address: g.address }))
+    return existing.length ? existing : [{ name: '', address: '' }]
+  })
+  const [chosenThreshold, setChosenThreshold] = useState<number | null>(editing && known.length ? current.threshold : null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [hash, setHash] = useState<Hash | null>(null)
 
-  const contactAddress = contact.trim()
-  const contactError = !contactAddress
-    ? ''
-    : !isAddress(contactAddress)
-      ? 'That is not a valid guardian address.'
-      : [kit.address, swissquoteGuardian, account.address].some((a) => a?.toLowerCase() === contactAddress.toLowerCase())
-        ? 'Your trusted contact needs their own guardian address.'
-        : ''
+  const kitAddress = useNewKit ? newKit.address : keptKit!
+  const guardianCount = 2 + contacts.length
+  const threshold = Math.min(chosenThreshold ?? suggestedThreshold(guardianCount), guardianCount)
+
+  const contactErrors = contacts.map((c, i) => {
+    const address = c.address.trim().toLowerCase()
+    if (!address) return ''
+    if (!isAddress(address)) return 'Not a valid guardian address.'
+    const taken = [kitAddress, swissquoteGuardian, account.address].some((a) => a?.toLowerCase() === address)
+    const duplicate = contacts.some((other, j) => j !== i && other.address.trim().toLowerCase() === address)
+    if (taken || duplicate) return 'Every guardian needs their own address.'
+    return ''
+  })
+  const contactsValid = contacts.every((c, i) => c.address.trim() && !contactErrors[i])
 
   async function run(task: () => Promise<void>) {
     setBusy(true)
@@ -51,24 +89,40 @@ export function RecoverySetupSheet({
     }
   }
 
-  const linkProfile = () =>
+  const begin = () =>
     run(async () => {
-      const { guardian } = await swissquote.link(account, CLIENT.tradingAccount)
+      // First time: prove ownership and link the wallet. Later: the wallet is already linked.
+      const guardian = editing ? (await swissquote.info()).address : (await swissquote.link(account, CLIENT.tradingAccount)).guardian
       setSwissquoteGuardian(guardian)
-      setStep('kit')
+      // Knowing the kit and Swissquote, every other guardian on-chain is a contact: keep them.
+      if (editing && keptKit && !contacts.some((c) => c.address)) {
+        const others = current.guardians.filter((g) => ![keptKit, guardian].some((k) => k.toLowerCase() === g.toLowerCase()))
+        if (others.length) setContacts(others.map((address) => ({ name: '', address })))
+      }
+      setStep(useNewKit ? 'kit' : 'contacts')
     })
 
   const activate = () =>
     run(async () => {
-      const guardians = [kit.address, swissquoteGuardian!, contactAddress as Address]
-      const result = await sendCalls(account, setupCalls(account, guardians, moduleIsOwner))
+      const labels: GuardianLabel[] = [
+        { address: kitAddress, kind: 'kit', name: 'Recovery kit' },
+        { address: swissquoteGuardian!, kind: 'swissquote', name: 'Swissquote' },
+        ...contacts.map((c, i) => ({
+          address: getAddress(c.address.trim()),
+          kind: 'contact' as const,
+          name: c.name.trim() || `Contact ${i + 1}`,
+        })),
+      ]
+      const calls = setupCalls(account, labels.map((g) => g.address), threshold, moduleIsOwner)
+      const result = await sendCalls(account, calls)
+      saveGuardianLabels(account.address, labels)
       setHash(result.hash)
       setStep('done')
       onDone()
     })
 
   function downloadKit() {
-    const url = URL.createObjectURL(new Blob([kit.text], { type: 'text/plain' }))
+    const url = URL.createObjectURL(new Blob([newKit.text], { type: 'text/plain' }))
     const link = document.createElement('a')
     link.href = url
     link.download = 'swissquote-recovery-kit.txt'
@@ -76,12 +130,23 @@ export function RecoverySetupSheet({
     URL.revokeObjectURL(url)
   }
 
+  // A different number of guardians needs a fresh look at the threshold: go back to the recommendation.
+  function changeContacts(next: Contact[]) {
+    setContacts(next)
+    setChosenThreshold(null)
+  }
+
+  const updateContact = (i: number, patch: Partial<Contact>) =>
+    setContacts(contacts.map((c, j) => (j === i ? { ...c, ...patch } : c)))
+
   return (
-    <Sheet title="Set up recovery" onClose={busy ? () => {} : onClose}>
+    <Sheet title={editing ? 'Manage guardians' : 'Set up recovery'} onClose={busy ? () => {} : onClose}>
       {step === 'intro' && (
         <div className="setup">
           <p className="lead left">
-            If you lose this phone, any <strong>2 of these 3</strong> can move your wallet to a new passkey:
+            {editing
+              ? 'Add or remove the people who can help you recover. Your recovery kit and Swissquote stay guardians.'
+              : 'If you lose this phone, your guardians together can move your wallet to a new passkey:'}
           </p>
           <ul className="guardian-list">
             <li>
@@ -107,34 +172,68 @@ export function RecoverySetupSheet({
                 <Users />
               </span>
               <div>
-                <strong>A person you trust</strong>
-                <span>Approves from their own phone after talking to you</span>
+                <strong>Up to {MAX_CONTACTS} people you trust</strong>
+                <span>Each approves from their own phone after talking to you</span>
               </div>
             </li>
           </ul>
           <p className="fineprint left">
-            Every recovery waits {formatDuration(RECOVERY_DELAY)} (72 h in production). During that time any device you
-            still have can cancel it. Swissquote can never recover alone, and can never move your funds.
+            You choose how many approvals are needed (at least 2). Every recovery then waits{' '}
+            {formatDuration(RECOVERY_DELAY)} (72 h in production), and any device you still have can cancel it.
+            Swissquote can never recover alone, and can never move your funds.
           </p>
-          <p className="fineprint left">
-            First, link this wallet to your Swissquote profile (client {CLIENT.tradingAccount}). Your passkey signs a
-            proof of ownership, which also covers the Travel Rule check for transfers from your Swissquote account.
-          </p>
-          <button className="primary big with-icon" onClick={linkProfile} disabled={busy}>
-            {busy ? <Spinner /> : <Fingerprint />} Link wallet with passkey
+          {!editing && (
+            <p className="fineprint left">
+              First, link this wallet to your Swissquote profile (client {CLIENT.tradingAccount}). Your passkey signs a
+              proof of ownership, which also covers the Travel Rule check for transfers from your Swissquote account.
+            </p>
+          )}
+          {editing && !keptKit && (
+            <div className="alert warn">
+              <strong>Keep your current recovery kit?</strong>
+              <span>This device does not remember your guardians. Open your kit file to keep it, or continue to make a new one.</span>
+              <label className="chip">
+                Open kit file
+                <input
+                  type="file"
+                  accept=".txt,text/plain"
+                  className="sr-only"
+                  onChange={(e) =>
+                    run(async () => {
+                      const kit = parseRecoveryKit((await e.target.files?.[0]?.text()) ?? '')
+                      const address = privateKeyToAccount(kit.privateKey).address
+                      if (kit.account !== account.address || !current.guardians.includes(address))
+                        throw new Error('This kit is not a guardian of this wallet.')
+                      setKeptKit(address)
+                      setUseNewKit(false)
+                    })
+                  }
+                />
+              </label>
+            </div>
+          )}
+          {editing && keptKit && !known.length && (
+            <span className="pill ok">
+              <Check width="11" height="11" strokeWidth="3" /> Current recovery kit recognised
+            </span>
+          )}
+          <button className="primary big with-icon" onClick={begin} disabled={busy}>
+            {busy ? <Spinner /> : editing ? null : <Fingerprint />} {editing ? 'Continue' : 'Link wallet with passkey'}
           </button>
         </div>
       )}
 
       {step === 'kit' && (
         <div className="setup">
-          <span className="pill ok">
-            <Check width="11" height="11" strokeWidth="3" /> Linked to your Swissquote profile
-          </span>
+          {!editing && (
+            <span className="pill ok">
+              <Check width="11" height="11" strokeWidth="3" /> Linked to your Swissquote profile
+            </span>
+          )}
           <h3>Save your recovery kit</h3>
           <p className="muted">
             Download it, then print it or move it to a USB stick. Do not leave it on this phone: if the phone is lost,
-            the kit has to survive.
+            the kit has to survive.{editing && ' Your old kit stops working once you save.'}
           </p>
           <button className="primary big" onClick={downloadKit}>
             Download recovery kit
@@ -143,42 +242,104 @@ export function RecoverySetupSheet({
             <input type="checkbox" checked={kitSaved} onChange={(e) => setKitSaved(e.target.checked)} />
             I stored it somewhere other than this phone
           </label>
-          <button className="primary big" onClick={() => setStep('contact')} disabled={!kitSaved}>
+          <button className="primary big" onClick={() => setStep('contacts')} disabled={!kitSaved}>
             Continue
           </button>
         </div>
       )}
 
-      {step === 'contact' && (
+      {step === 'contacts' && (
         <form
           className="setup"
           onSubmit={(e) => {
             e.preventDefault()
-            if (contactAddress && !contactError) setStep('confirm')
+            if (contactsValid) setStep('confirm')
           }}
         >
-          <h3>Add a person you trust</h3>
+          <h3>People you trust</h3>
           <p className="muted">
-            Ask them to open the guardian page on their phone and send you their guardian address. They can never move
-            your funds, and they cannot recover alone.
+            Each person opens the guardian page on their phone and sends you their guardian address. They can never
+            move your funds.
           </p>
           <a className="explorer-link" href={`${window.location.pathname}#guardian`} target="_blank" rel="noreferrer">
             Open the guardian page <External />
           </a>
-          <label className="field">
-            Their guardian address
-            <input
-              value={contact}
-              onChange={(e) => setContact(e.target.value)}
-              placeholder="0x…"
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </label>
-          {contactError && <p className="error small">{contactError}</p>}
-          <button className="primary big" disabled={!contactAddress || !!contactError}>
+
+          {contacts.map((contact, i) => (
+            <div className="contact-row" key={i}>
+              <div className="contact-row-head">
+                <input
+                  className="name-input"
+                  value={contact.name}
+                  onChange={(e) => updateContact(i, { name: e.target.value })}
+                  placeholder={`Contact ${i + 1} name`}
+                  aria-label={`Contact ${i + 1} name`}
+                />
+                {contacts.length > 1 && (
+                  <button type="button" className="text-btn danger" onClick={() => changeContacts(contacts.filter((_, j) => j !== i))}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <label className="field">
+                <span className="sr-only">Guardian address</span>
+                <input
+                  value={contact.address}
+                  onChange={(e) => updateContact(i, { address: e.target.value })}
+                  placeholder="Their guardian address 0x…"
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+              </label>
+              {contactErrors[i] && <p className="error small">{contactErrors[i]}</p>}
+            </div>
+          ))}
+
+          {contacts.length < MAX_CONTACTS && (
+            <button type="button" className="chip" onClick={() => changeContacts([...contacts, { name: '', address: '' }])}>
+              + Add another person
+            </button>
+          )}
+
+          <div className="threshold">
+            <strong>Approvals needed to recover</strong>
+            <div className="segmented" role="radiogroup">
+              {Array.from({ length: guardianCount - 1 }, (_, i) => i + 2).map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={threshold === n}
+                  className={threshold === n ? 'active' : ''}
+                  onClick={() => setChosenThreshold(n)}
+                >
+                  {n} of {guardianCount}
+                </button>
+              ))}
+            </div>
+            <span className="muted small">
+              {threshold === suggestedThreshold(guardianCount) ? 'Recommended. ' : ''}
+              Lost phone: your kit and Swissquote
+              {threshold > 2 ? ` plus ${threshold - 2} ${threshold - 2 === 1 ? 'person' : 'people'}` : ''}. Swissquote
+              gone: your kit and {threshold - 1} {threshold - 1 === 1 ? 'person' : 'people'}.
+            </span>
+          </div>
+
+          <button className="primary big" disabled={!contactsValid}>
             Continue
           </button>
+          {editing && keptKit && !useNewKit && (
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() => {
+                setUseNewKit(true)
+                setStep('kit')
+              }}
+            >
+              Lost your recovery kit? Make a new one
+            </button>
+          )}
         </form>
       )}
 
@@ -187,19 +348,23 @@ export function RecoverySetupSheet({
           <dl>
             <div>
               <dt>Recovery kit</dt>
-              <dd className="mono">{short(kit.address)}</dd>
+              <dd className="mono">{useNewKit ? `New · ${short(kitAddress)}` : short(kitAddress)}</dd>
             </div>
             <div>
               <dt>Swissquote</dt>
               <dd className="mono">{short(swissquoteGuardian!)}</dd>
             </div>
-            <div>
-              <dt>Trusted contact</dt>
-              <dd className="mono">{short(contactAddress)}</dd>
-            </div>
+            {contacts.map((c, i) => (
+              <div key={i}>
+                <dt>{c.name.trim() || `Contact ${i + 1}`}</dt>
+                <dd className="mono">{short(c.address.trim())}</dd>
+              </div>
+            ))}
             <div>
               <dt>Approvals needed</dt>
-              <dd>2 of 3</dd>
+              <dd>
+                {threshold} of {guardianCount}
+              </dd>
             </div>
             <div>
               <dt>Time to cancel</dt>
@@ -207,9 +372,9 @@ export function RecoverySetupSheet({
             </div>
           </dl>
           <button className="primary big with-icon" onClick={activate} disabled={busy}>
-            {busy ? <Spinner /> : <Fingerprint />} {busy ? 'Activating…' : 'Activate with passkey'}
+            {busy ? <Spinner /> : <Fingerprint />} {busy ? 'Saving…' : editing ? 'Save with passkey' : 'Activate with passkey'}
           </button>
-          <button className="text-btn" onClick={() => setStep('contact')} disabled={busy}>
+          <button className="text-btn" onClick={() => setStep('contacts')} disabled={busy}>
             Back
           </button>
         </div>
@@ -220,8 +385,11 @@ export function RecoverySetupSheet({
           <div className="success-badge">
             <Check width="40" height="40" strokeWidth="2.6" />
           </div>
-          <p className="lead">Recovery is active</p>
-          <p className="muted">The guardians are stored in the recovery contract on Base Sepolia.</p>
+          <p className="lead">{editing ? 'Guardians updated' : 'Recovery is active'}</p>
+          <p className="muted">
+            {threshold} of {guardianCount} guardians can now recover your wallet. Stored in the recovery contract on Base
+            Sepolia.
+          </p>
           {hash && (
             <a className="explorer-link" href={`${EXPLORER}/tx/${hash}`} target="_blank" rel="noreferrer">
               See it on the blockchain <External />

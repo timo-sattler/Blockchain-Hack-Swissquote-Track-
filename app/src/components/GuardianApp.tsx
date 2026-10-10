@@ -45,7 +45,10 @@ export function GuardianApp({ hash }: { hash: string }) {
       {!request && (
         <section className="card">
           <h2>Your guardian address</h2>
-          <p className="muted">Send this to the person who asked you to be their guardian.</p>
+          <p className="muted">
+            Send this to anyone who asks you to be their guardian. The same address works for as many friends as you
+            like: each request they send names the wallet, and you approve each one separately.
+          </p>
           <p className="code-box">{guardian.address}</p>
           <button className="primary big with-icon" onClick={() => copy(guardian.address, 'address')}>
             {copied === 'address' ? <Check /> : <Copy />} {copied === 'address' ? 'Copied' : 'Copy address'}

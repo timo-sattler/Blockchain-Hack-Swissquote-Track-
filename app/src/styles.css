@@ -1542,3 +1542,55 @@ label.chip {
 .muted.small {
   font-size: 12.5px;
 }
+
+.contact-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.contact-row-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-row-head .text-btn {
+  padding: 4px 6px;
+}
+
+.name-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  font-size: 15px;
+  outline: none;
+}
+
+.setup > .chip {
+  align-self: flex-start;
+}
+
+.threshold {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.threshold .segmented {
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+.guardian-names {
+  font-weight: 600;
+  color: var(--text) !important;
+}

@@ -266,11 +266,14 @@ export function RecoverFlow({ onRecovered, onCancel }: { onRecovered: (p: Stored
 
   // ---------------------------------------------------------------- step 3: approvals
   const has = (by: Guardian) => approvals.some((a) => a.by === by)
+  const guardianCount = state?.guardians.length ?? 3
+  const contactCount = Math.max(1, guardianCount - 2) // everyone besides the kit and Swissquote
+  const contactApprovals = approvals.filter((a) => a.by === 'contact').length
   return (
     <section className="recover">
       <StepHeader account={account} step={2} />
       <h2>
-        Get {threshold} of 3 approvals <span className="pill ok">{approvals.length} / {threshold}</span>
+        Get {threshold} of {guardianCount} approvals <span className="pill ok">{approvals.length} / {threshold}</span>
       </h2>
 
       <ul className="approvals">
@@ -307,8 +310,12 @@ export function RecoverFlow({ onRecovered, onCancel }: { onRecovered: (p: Stored
           <IdentityCheck account={account} request={request} onApproved={(a) => addApproval('swissquote', a)} />
         </ApprovalCard>
 
-        <ApprovalCard icon={<Users />} title="Your trusted contact" done={has('contact')}>
-          <ContactApproval request={request} onApproved={(a) => addApproval('contact', a)} />
+        <ApprovalCard
+          icon={<Users />}
+          title={contactCount > 1 ? `People you trust · ${contactApprovals} of ${contactCount} approved` : 'Your trusted contact'}
+          done={contactApprovals >= contactCount || (contactApprovals > 0 && approvals.length >= threshold)}
+        >
+          <ContactApproval request={request} several={contactCount > 1} onApproved={(a) => addApproval('contact', a)} />
         </ApprovalCard>
       </ul>
 
@@ -396,7 +403,15 @@ function IdentityCheck({ account, request, onApproved }: { account: Address; req
   )
 }
 
-function ContactApproval({ request, onApproved }: { request: RecoveryRequest; onApproved: (a: Approval) => Promise<void> }) {
+function ContactApproval({
+  request,
+  several,
+  onApproved,
+}: {
+  request: RecoveryRequest
+  several: boolean
+  onApproved: (a: Approval) => Promise<void>
+}) {
   const [copied, setCopied] = useState(false)
   const [code, setCode] = useState('')
   const [error, setError] = useState('')
@@ -417,6 +432,7 @@ function ContactApproval({ request, onApproved }: { request: RecoveryRequest; on
     if (!value.trim().startsWith('SQA-')) return
     try {
       await onApproved(decodeApproval(value))
+      setCode('') // ready for the next person's code
     } catch (e) {
       setError(explainError(e))
     }
@@ -424,7 +440,11 @@ function ContactApproval({ request, onApproved }: { request: RecoveryRequest; on
 
   return (
     <>
-      <span className="muted small">Send them a link. They call you, approve, and send back a code</span>
+      <span className="muted small">
+        {several
+          ? 'Send the same link to each of them. They call you, approve, and send back a code'
+          : 'Send them a link. They call you, approve, and send back a code'}
+      </span>
       <div className="chips">
         <button className="chip" onClick={copy}>
           {copied ? 'Link copied' : 'Copy request link'}

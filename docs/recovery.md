@@ -1,15 +1,20 @@
 # Recovery
 
-**Model:** 2-of-3 guardians, a waiting period, and an owner veto, enforced by a smart contract
+**Model:** M-of-N guardians (2 of 3 by default), a waiting period, and an owner veto, enforced by a smart contract
 ([`contracts/src/RecoveryModule.sol`](../contracts/src/RecoveryModule.sol)).
 
 | Guardian | Who holds it | How it approves |
 |---|---|---|
 | Recovery kit | The client, offline (printed or on a USB stick) | Key in the kit file signs in the browser |
 | Swissquote | Swissquote guardian service ([`backend/guardian`](../backend/guardian), **mocked**) | Signs only after an ID document + face match |
-| Trusted contact | A person the client chooses, on their own phone | Opens a link, calls the client, sends back a code |
+| Trusted contacts (1 to 3) | People the client chooses, each on their own phone | Opens a link, calls the client, sends back a code |
 
-Any **2 of 3** approve a new passkey. The contract then waits (**72 h** in production, 60 s in the demo).
+The client picks how many approvals are needed: at least 2 (enforced on-chain, so no single party can
+recover) and at most all guardians. Recommended: **2 of 3**, **3 of 4**, **3 of 5**, so no pair of friends
+can start a recovery alone once there are several. Guardians can be changed later from the app; the
+current recovery kit is kept. One person can be a guardian for any number of friends with the same address.
+
+Once enough guardians approve a new passkey, The contract then waits (**72 h** in production, 60 s in the demo).
 During that time any passkey the client still has can **cancel**. After the wait, anyone can finish the
 recovery: the new passkey becomes the owner and **every old passkey is removed**.
 

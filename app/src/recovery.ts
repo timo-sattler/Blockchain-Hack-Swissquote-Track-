@@ -125,8 +125,8 @@ export function splitPublicKey(publicKey: Hex): { x: Hex; y: Hex } {
 /** The contract requires guardians and signers in ascending order. */
 export const sortAddresses = (list: Address[]) => [...list].sort((a, b) => (BigInt(a) < BigInt(b) ? -1 : 1))
 
-/** One UserOperation: let the module manage owners, then register the 2-of-3 guardians. */
-export function setupCalls(account: SmartAccount, guardians: Address[], moduleIsOwner: boolean): Call[] {
+/** One UserOperation: let the module manage owners (first time only), then register the guardians. */
+export function setupCalls(account: SmartAccount, guardians: Address[], threshold: number, moduleIsOwner: boolean): Call[] {
   const calls: Call[] = []
   if (!moduleIsOwner)
     calls.push({
@@ -138,7 +138,7 @@ export function setupCalls(account: SmartAccount, guardians: Address[], moduleIs
     data: encodeFunctionData({
       abi: recoveryModuleAbi,
       functionName: 'setGuardians',
-      args: [sortAddresses(guardians), 2, RECOVERY_DELAY],
+      args: [sortAddresses(guardians), threshold, RECOVERY_DELAY],
     }),
   })
   return calls
@@ -170,6 +170,32 @@ export function startCall(request: RecoveryRequest, approvals: Approval[]): Call
         sorted.map((a) => a.signature),
       ],
     }),
+  }
+}
+
+export const MAX_CONTACTS = 3 // recovery kit + Swissquote + 3 contacts = the contract's maximum of 5
+
+/** Suggested approvals for n guardians: 2 of 3, then 3 of 4 or 5, so no pair of friends can start a recovery alone. */
+export const suggestedThreshold = (guardianCount: number) => (guardianCount <= 3 ? 2 : 3)
+
+// The chain only stores addresses. Who is who is remembered on this device, to show names and to keep
+// the same recovery kit when the guardians change later.
+export type GuardianLabel = { address: Address; kind: 'kit' | 'swissquote' | 'contact'; name: string }
+const labelsKey = (account: Address) => `sq-wallet:guardians:${account.toLowerCase()}`
+
+export function loadGuardianLabels(account: Address): GuardianLabel[] {
+  try {
+    return JSON.parse(localStorage.getItem(labelsKey(account)) ?? '[]')
+  } catch {
+    return []
+  }
+}
+
+export function saveGuardianLabels(account: Address, labels: GuardianLabel[]) {
+  try {
+    localStorage.setItem(labelsKey(account), JSON.stringify(labels))
+  } catch {
+    // Names are a convenience; the guardians themselves are on-chain.
   }
 }
 

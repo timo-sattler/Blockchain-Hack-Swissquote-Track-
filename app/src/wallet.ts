@@ -194,7 +194,23 @@ export async function sendCalls(
 
   const { success, receipt, reason } = await bundlerClient.waitForUserOperationReceipt({ hash: userOpHash })
   if (!success) throw new Error(`Transaction reverted on-chain${reason ? `: ${reason}` : ''}.`)
+  await waitForRpc(receipt.blockNumber)
   return { hash: receipt.transactionHash, blockNumber: receipt.blockNumber, sponsored }
+}
+
+/**
+ * The bundler can report a receipt before the public RPC node we read from has that block. Wait
+ * (up to ~10 s) so that reads right after a transaction already show its effect.
+ */
+async function waitForRpc(blockNumber: bigint) {
+  for (let i = 0; i < 20; i++) {
+    try {
+      if ((await publicClient.getBlockNumber({ cacheTime: 0 })) >= blockNumber) return
+    } catch {
+      // Keep waiting; the transaction itself is already confirmed.
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
 }
 
 export function sendTransfer(
