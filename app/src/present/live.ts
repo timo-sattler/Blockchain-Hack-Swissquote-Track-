@@ -3,8 +3,8 @@ import { createPublicClient, formatUnits, http, isAddress, parseAbiItem, type Ad
 import { baseSepolia } from 'viem/chains'
 import { BTC_EXPLORER, HUB_URL, MEMPOOL_API, RPC_URL, USDC } from '../config'
 
-/** Key-share holders: A = client phone, B = Swissquote share service, C = recovery kit. */
-export type Party = 'A' | 'B' | 'C'
+/** Key parts: A = the client's part (identical copies on their devices), B = Swissquote's part. */
+export type Party = 'A' | 'B'
 export type Chain = 'bitcoin' | 'base'
 
 /**
@@ -13,24 +13,17 @@ export type Chain = 'bitcoin' | 'base'
  */
 export type WalletEvent =
   | { type: 'wallet_created'; btcAddress: string; evmAddress: string; name?: string }
-  | { type: 'signing'; parties: Party[] }
+  | { type: 'signing'; parties: Party[]; alone?: boolean }
   | { type: 'tx_broadcast'; chain: Chain; hash: string; amount: string; asset: string; from?: string; to?: string; sponsored?: boolean }
   | { type: 'service_offline' }
   | { type: 'service_online' }
-  | { type: 'recovery_requested'; by: 'client' | 'attacker' }
-  | { type: 'recovery_refused'; reason: string }
-  | { type: 'recovery_completed' }
-  | { type: 'recovery_cancelled'; name?: string }
-  | { type: 'replaced_device_refused'; name?: string }
-  | { type: 'kit_replaced'; name?: string }
-  | { type: 'inbox_registered'; name?: string; hash: string }
-  | { type: 'backup_onchain'; name?: string; friends: number; hash: string }
-  | { type: 'piece_returned'; name?: string; hash: string }
   | { type: 'payment_blocked'; name?: string; to: string; reason: string }
+  | { type: 'device_added'; name?: string; device: string }
+  | { type: 'device_removed'; name?: string; device: string }
+  | { type: 'replaced_device_refused'; name?: string }
   | { type: 'escrow_deposited'; name?: string }
-  | { type: 'escrow_released'; name?: string }
   | { type: 'escrow_refused'; reason: string }
-  | { type: 'device_paired'; name?: string }
+  | { type: 'takeover_released'; name?: string }
   | { type: 'funded'; name?: string; to: string; usdc: string; eth: string; hash: string }
 
 export type FeedItem = WalletEvent & { id: string; at: number; source: 'service' | 'chain' | 'simulated' }
@@ -48,17 +41,17 @@ const transferEvent = parseAbiItem('event Transfer(address indexed from, address
 const SCRIPT: { delay: number; event: WalletEvent }[] = [
   { delay: 0, event: { type: 'wallet_created', btcAddress: 'tb1qvspd68u7ag9dsc6avpth75k3uakqez6qz7rhrl', evmAddress: '0x953Df09FeA8f51A93583B2B71a7847318eD44810' } },
   { delay: 3500, event: { type: 'signing', parties: ['A', 'B'] } },
-  { delay: 1800, event: { type: 'tx_broadcast', chain: 'base', hash: 'simulated', amount: '20', asset: 'USDC' } },
-  { delay: 3500, event: { type: 'signing', parties: ['A', 'B'] } },
-  { delay: 1800, event: { type: 'tx_broadcast', chain: 'bitcoin', hash: 'simulated', amount: '0.0005', asset: 'BTC' } },
+  { delay: 1800, event: { type: 'tx_broadcast', chain: 'base', hash: 'simulated', amount: '20', asset: 'USDC', sponsored: true } },
+  { delay: 3500, event: { type: 'payment_blocked', to: '0xbad0bad0bad0bad0bad0bad0bad0bad0bad0bad0', reason: 'a known scam: a fake airdrop that drains wallets (mock)' } },
+  { delay: 3500, event: { type: 'device_added', device: 'iPhone' } },
+  { delay: 3000, event: { type: 'signing', parties: ['A', 'B'] } },
+  { delay: 1800, event: { type: 'tx_broadcast', chain: 'base', hash: 'simulated', amount: '5', asset: 'EURC', sponsored: true } },
+  { delay: 3000, event: { type: 'device_removed', device: 'Mac' } },
   { delay: 3500, event: { type: 'service_offline' } },
-  { delay: 2500, event: { type: 'signing', parties: ['A', 'C'] } },
-  { delay: 1800, event: { type: 'tx_broadcast', chain: 'base', hash: 'simulated', amount: '5', asset: 'USDC' } },
+  { delay: 3500, event: { type: 'takeover_released' } },
+  { delay: 2500, event: { type: 'signing', parties: ['A', 'B'], alone: true } },
+  { delay: 1800, event: { type: 'tx_broadcast', chain: 'base', hash: 'simulated', amount: '0.001', asset: 'ETH' } },
   { delay: 3000, event: { type: 'service_online' } },
-  { delay: 2500, event: { type: 'recovery_requested', by: 'attacker' } },
-  { delay: 2500, event: { type: 'recovery_refused', reason: 'Liveness selfie does not match the KYC profile' } },
-  { delay: 3500, event: { type: 'recovery_requested', by: 'client' } },
-  { delay: 3000, event: { type: 'recovery_completed' } },
 ]
 
 let counter = 0

@@ -1,6 +1,6 @@
-// Swissquote share service (MOCK of the bank's backend): MPC party B.
-// Holds Share B in its own storage, never sends it out, and only co-signs transactions it has
-// decoded and checked itself. Runs as a separate process, as the challenge requires.
+// Swissquote share service (MOCK of the bank's backend): party B of the two-part wallet (2-of-2).
+// Holds Swissquote's part in its own storage, never sends it out, and only co-signs payments it has
+// decoded and screened itself. Runs as a separate process, as the challenge requires.
 import { createServer } from 'node:http'
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { createHash, randomUUID } from 'node:crypto'
@@ -18,20 +18,24 @@ import { p2wpkh, SigHash, TEST_NETWORK, Transaction, Address, OutScript } from '
 import { decodeFunctionData, erc20Abi, formatUnits, getAddress, hashTypedData, hexToBytes, isAddress, isHex, keccak256, parseTransaction, recoverTypedDataAddress, toHex } from 'viem'
 import { createTreasury } from './treasury.mjs'
 import { reserveRelay } from './relay-quota.mjs'
-import { backupTypedData, chainHash, CHUNK_BYTES, InputError, MAILBOX, MAX_PIECE_BYTES, piecesHashOf } from './backup-mailbox.mjs'
 
 const PORT = Number(process.env.SHARE_PORT ?? 8790)
 const HUB_URL = process.env.HUB_URL ?? 'http://localhost:8787'
 const DATA_DIR = process.env.DATA_DIR ?? join(import.meta.dirname, 'data', 'share-service')
-const RECOVERY_DELAY_MS = Number(process.env.RECOVERY_DELAY_SEC ?? 30) * 1000 // production: 48 h
 const HIGH_VALUE_USDC = 1000
-// MOCK independent escrow agent (escrow-agent.mjs): receives a copy of Share B after every key
-// generation, for the case "Swissquote is gone and the client lost their phone".
+// MOCK independent escrow agent (escrow-agent.mjs): receives a copy of Swissquote's part when a wallet
+// is created and hands it to the client's device only after the grace period (Swissquote gone).
 const ESCROW_URL = process.env.ESCROW_URL ?? 'http://localhost:8791'
 const ESCROW_DEPOSIT_TOKEN = process.env.ESCROW_DEPOSIT_TOKEN ?? 'demo-escrow-deposit-token'
-const RELAYS_PER_DAY = Number(process.env.RELAYS_PER_DAY ?? 10) // gasless USDC transfers Swissquote pays for, per wallet
+const RELAYS_PER_DAY = Number(process.env.RELAYS_PER_DAY ?? 10) // gasless USDC/EURC transfers Swissquote pays for, per wallet
 if (!Number.isSafeInteger(RELAYS_PER_DAY) || RELAYS_PER_DAY < 0) throw new Error('RELAYS_PER_DAY must be a non-negative integer')
 const USDC = '0x036cbd53842c5426634e7929541ec2318f3dcf7e'
+// Stablecoins Swissquote co-signs and sponsors: Circle's FiatToken v2 on Base Sepolia (plain transfers
+// and EIP-3009 transferWithAuthorization). The EIP-712 domain name equals the token name.
+const STABLECOINS = {
+  [USDC]: 'USDC',
+  '0x808456652fdb597867f38412077a9182bf77359f': 'EURC',
+}
 // Clearly fake addresses standing in for a compliance provider's sanctions list and scam database (mock).
 // Production: a chain-analytics provider (e.g. Chainalysis, Elliptic) queried before every co-signature.
 const BLOCKLIST = new Map([
@@ -98,7 +102,6 @@ const originOf = (req) => {
 const challenges = new Map() // isolated one-time WebAuthn challenges, expiring after five minutes
 const tokens = new Map() // token -> { walletId, expires }
 const sessions = new Map() // sessionId -> { kind, walletId, session, stage, hash?, created }
-const recoveryProofs = new Map() // one-time, domain-separated proofs of kit possession
 
 function saveChallenge(id, challenge) {
   challenges.set(id, { challenge, expires: Date.now() + 5 * 60_000 })
@@ -116,18 +119,8 @@ function walletOrigin(req, wallet) {
   return { origin: wallet.origin ?? context.origin, rpID: wallet.rpID ?? context.rpID }
 }
 
-function requireRecovery(wallet, recoveryToken) {
-  if (wallet.recovery?.state !== 'ready' || !recoveryToken || wallet.recovery.token !== recoveryToken)
-    throw new HttpError(403, 'approved recovery session required')
-}
-
-function revokeTokens(walletId) {
-  for (const [token, entry] of tokens) if (entry.walletId === walletId) tokens.delete(token)
-}
-
 // Abandoned protocol runs expire, and their WASM state is freed.
 setInterval(() => {
-  for (const [id, proof] of recoveryProofs) if (proof.expires < Date.now()) recoveryProofs.delete(id)
   for (const [id, token] of tokens) if (token.expires < Date.now()) tokens.delete(id)
   for (const [id, challenge] of challenges) if (challenge.expires < Date.now()) challenges.delete(id)
   for (const [sid, state] of sessions)
@@ -141,10 +134,13 @@ setInterval(() => {
     }
 }, 30_000)
 
+// A wallet's passkeys: the first device's, plus one per device added later (identical copies of the client's part).
+const credentialsOf = (wallet) => [wallet?.credential, ...(wallet?.devices ?? [])].filter(Boolean)
+
 function requireToken(walletId, token) {
   const entry = tokens.get(token)
   const wallet = loadWallet(walletId)
-  if (!entry || entry.walletId !== walletId || entry.expires < Date.now() || entry.credentialId !== wallet?.credential?.id || entry.epoch !== (wallet?.epoch ?? 1))
+  if (!entry || entry.walletId !== walletId || entry.expires < Date.now() || !credentialsOf(wallet).some((c) => c.id === entry.credentialId) || entry.epoch !== (wallet?.epoch ?? 1))
     throw new HttpError(401, 'passkey login required')
 }
 
@@ -156,12 +152,13 @@ function evmIntent(wallet, unsignedTx) {
   let to = tx.to?.toLowerCase()
   let amount = `${formatUnits(tx.value ?? 0n, 18)} ETH`
   let usdc = 0
-  if (to === USDC && tx.data) {
+  if (STABLECOINS[to] && tx.data) {
+    const symbol = STABLECOINS[to]
     const call = decodeFunctionData({ abi: erc20Abi, data: tx.data })
-    if (call.functionName !== 'transfer') throw new HttpError(403, 'only plain USDC transfers are allowed')
+    if (call.functionName !== 'transfer') throw new HttpError(403, `only plain ${symbol} transfers are allowed`)
     to = call.args[0].toLowerCase()
     usdc = Number(formatUnits(call.args[1], 6))
-    amount = `${usdc} USDC`
+    amount = `${usdc} ${symbol}`
   } else if (tx.data && tx.data !== '0x') {
     throw new HttpError(403, 'contract calls need an approved dApp (not in this prototype)')
   }
@@ -171,8 +168,10 @@ function evmIntent(wallet, unsignedTx) {
 // Gasless USDC: the client signs an EIP-3009 TransferWithAuthorization instead of a transaction, and
 // Swissquote's relayer submits it and pays the network fee. Same policy checks as a normal transfer.
 function usdcAuthorizationTypedData(from, auth) {
+  const token = (auth.token ?? USDC).toLowerCase() // USDC unless the client names another stablecoin
+  if (!STABLECOINS[token]) throw new HttpError(403, 'only USDC and EURC transfers can be sponsored')
   return {
-    domain: { name: 'USDC', version: '2', chainId: 84532, verifyingContract: getAddress(USDC) },
+    domain: { name: STABLECOINS[token], version: '2', chainId: 84532, verifyingContract: getAddress(token) },
     types: {
       TransferWithAuthorization: [
         { name: 'from', type: 'address' },
@@ -197,7 +196,8 @@ function usdcAuthorizationTypedData(from, auth) {
 
 function gaslessIntent(wallet, auth) {
   const now = Math.floor(Date.now() / 1000)
-  if (!auth || !isAddress(auth.to) || !isHex(auth.nonce) || auth.nonce.length !== 66) throw new HttpError(400, 'invalid USDC authorization')
+  if (!auth || !isAddress(auth.to) || !isHex(auth.nonce) || auth.nonce.length !== 66) throw new HttpError(400, 'invalid stablecoin authorization')
+  if (auth.token !== undefined && (!isAddress(auth.token) || !STABLECOINS[auth.token.toLowerCase()])) throw new HttpError(403, 'only USDC and EURC transfers can be sponsored')
   for (const field of ['value', 'validAfter', 'validBefore']) {
     if (typeof auth[field] !== 'string' || !/^\d{1,78}$/.test(auth[field]) || BigInt(auth[field]) >= 2n ** 256n)
       throw new HttpError(400, `invalid authorization ${field}`)
@@ -206,24 +206,9 @@ function gaslessIntent(wallet, auth) {
   if (Number(auth.validAfter) > now || Number(auth.validBefore) <= now || Number(auth.validBefore) > now + 3600)
     throw new HttpError(400, 'authorization must be valid now and for at most one hour')
   const usdc = Number(formatUnits(BigInt(auth.value), 6))
-  const hash = hexToBytes(hashTypedData(usdcAuthorizationTypedData(wallet.evmAddress, auth)))
-  return { hash, recipients: [auth.to.toLowerCase()], usdc, summary: `${usdc} USDC to ${auth.to} (gasless)` }
-}
-
-// On-chain kit backup: only the two mailbox messages (a friend's inbox key, a signed backup), never an
-// arbitrary hash. The contract then checks this wallet's signature itself.
-function backupIntent(wallet, request) {
-  if (BigInt(MAILBOX) === 0n) throw new HttpError(503, 'on-chain backup is not configured (BACKUP_MAILBOX)')
-  let typedData
-  try {
-    typedData = backupTypedData(wallet.evmAddress, request)
-  } catch (error) {
-    if (error instanceof InputError) throw new HttpError(400, error.message)
-    throw error
-  }
-  const friends = request.kind === 'backup' ? request.friends.map((f) => f.toLowerCase()) : []
-  const summary = request.kind === 'inbox' ? "an inbox key for holding friends' backups" : `an on-chain kit backup for ${friends.length} friends`
-  return { hash: hexToBytes(hashTypedData(typedData)), recipients: friends, usdc: 0, summary, typedData }
+  const typedData = usdcAuthorizationTypedData(wallet.evmAddress, auth)
+  const hash = hexToBytes(hashTypedData(typedData))
+  return { hash, recipients: [auth.to.toLowerCase()], usdc, summary: `${usdc} ${typedData.domain.name} to ${auth.to} (gasless)` }
 }
 
 function btcIntent(wallet, psbtBase64, inputIndex) {
@@ -257,8 +242,8 @@ const routes = {
 
   'GET /treasury': () => treasury.status(),
 
-  // Screening before a payment is built, for every path (also phone + kit, which the app checks
-  // against its last copy of this list when Swissquote is offline). Co-signing enforces it again.
+  // Screening before a payment is built. The app keeps a copy of the list for after a takeover, when
+  // Swissquote is gone. Co-signing enforces it again.
   'GET /blocklist': () => ({ updated: BLOCKLIST_UPDATED, entries: [...BLOCKLIST].map(([address, reason]) => ({ address, reason })) }),
   'POST /screen': (req, params, body) => {
     if (typeof body.to !== 'string' || body.to.length > 100) throw new HttpError(400, 'recipient required')
@@ -279,7 +264,8 @@ const routes = {
     const options = await registrationOptions(rpID, name)
     const creationToken = randomUUID()
     saveChallenge(`register:${id}`, options.challenge)
-    saveWallet({ id, name, clientId: 'CH-1048-2231', origin, rpID, creationToken, createdAt: Date.now(), status: 'registering' })
+    // Two parts (2-of-2): the client's part (identical copies on their devices) + Swissquote's part.
+    saveWallet({ id, name, clientId: 'CH-1048-2231', origin, rpID, creationToken, createdAt: Date.now(), status: 'registering', scheme: '2of2' })
     return { walletId: id, options, creationToken }
   },
 
@@ -300,42 +286,77 @@ const routes = {
     return { token, ...publicView(wallet) }
   },
 
-  // A logged-in client on a device without Share A: passkey + recovery kit re-issue the phone share at once.
-  'POST /wallets/:id/pair': (req, { id }, body) => {
+  // ---------- more devices with an identical copy of the client's part ----------
+  // The logged-in device uploads its part encrypted with a one-time key that travels only inside the
+  // link / QR code (URL fragment), so Swissquote relays a copy it cannot read. The new device registers
+  // its own passkey (Face ID); from then on Swissquote accepts either device. Single use, 10 minutes.
+  'POST /wallets/:id/devices/invite': (req, { id }, body) => {
     const wallet = mustWallet(id)
+    walletOrigin(req, wallet)
     if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
     requireToken(id, body.token)
-    walletOrigin(req, wallet)
-    wallet.pairing = { token: randomUUID(), expires: Date.now() + 5 * 60_000 }
+    if (typeof body.sealedShare !== 'string' || body.sealedShare.length < 100 || body.sealedShare.length > 600_000) throw new HttpError(400, 'encrypted key part required')
+    wallet.invite = { token: randomUUID(), sealedShare: body.sealedShare, expires: Date.now() + 10 * 60_000 }
     saveWallet(wallet)
-    console.log(`[share] re-pairing a device for ${wallet.name ?? id}: passkey verified, waiting for the kit`)
-    return { pairingToken: wallet.pairing.token }
+    return { inviteToken: wallet.invite.token, expires: wallet.invite.expires }
   },
 
-  // Kit lost or stolen: phone (A) + Swissquote (B) re-issue all three shares, so the old kit stops working.
-  'POST /wallets/:id/kit/replace': (req, { id }, body) => {
+  'POST /wallets/:id/devices/options': async (req, { id }, body) => {
     const wallet = mustWallet(id)
-    if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
-    requireToken(id, body.token)
+    const invite = mustInvite(wallet, body.inviteToken)
+    const { rpID } = walletOrigin(req, wallet)
+    const options = await registrationOptions(rpID, wallet.name ?? 'Swissquote wallet')
+    saveChallenge(`device:${id}:${invite.token}`, options.challenge)
+    return { options, name: wallet.name ?? null }
+  },
+
+  'POST /wallets/:id/devices/register': async (req, { id }, body) => {
+    const wallet = mustWallet(id)
+    const invite = mustInvite(wallet, body.inviteToken)
+    const { origin, rpID } = walletOrigin(req, wallet)
+    const expectedChallenge = takeChallenge(`device:${id}:${invite.token}`)
+    if (!expectedChallenge) throw new HttpError(400, 'registration expired, open the link again')
+    const result = await verifyRegistrationResponse({ response: body.response, expectedChallenge, expectedOrigin: origin, expectedRPID: rpID, requireUserVerification: true })
+    if (!result.verified) throw new HttpError(401, 'passkey registration failed')
+    const latest = mustWallet(id)
+    if (latest.invite?.token !== invite.token) throw new HttpError(409, 'This link was already used. Create a new one on your other device.')
+    const { credential } = result.registrationInfo
+    const deviceName = String(body.deviceName ?? '').trim().slice(0, 40) || 'Another device'
+    latest.devices = [...(latest.devices ?? []), { id: credential.id, publicKey: b64(credential.publicKey), counter: credential.counter, name: deviceName, addedAt: Date.now() }]
+    const { sealedShare } = latest.invite
+    delete latest.invite
+    saveWallet(latest)
+    emit({ type: 'device_added', name: latest.name, device: deviceName })
+    console.log(`[share] ${latest.name ?? id} added a device: ${deviceName}`)
+    return { sealedShare, publicKey: latest.publicKey, ...publicView(latest) }
+  },
+
+  // A lost device: Swissquote stops accepting its passkey, so its copy of the client's part is useless.
+  'POST /wallets/:id/devices/remove': (req, { id }, body) => {
+    const wallet = mustWallet(id)
     walletOrigin(req, wallet)
-    if (wallet.recovery?.state === 'pending' || wallet.recovery?.state === 'ready')
-      throw new HttpError(409, 'A recovery is in progress. Cancel it before replacing the kit.')
-    wallet.kitReplace = { token: randomUUID(), expires: Date.now() + 5 * 60_000 }
+    requireToken(id, body.token)
+    const all = credentialsOf(wallet)
+    if (!all.some((c) => c.id === body.credentialId)) throw new HttpError(404, 'unknown device')
+    if (all.length < 2) throw new HttpError(409, 'You cannot remove your only device.')
+    if (tokens.get(body.token).credentialId === body.credentialId) throw new HttpError(409, 'Remove this device from one of your other devices.')
+    const removed = all.find((c) => c.id === body.credentialId)
+    const remaining = all.filter((c) => c.id !== body.credentialId)
+    wallet.credential = { name: remaining[0].name ?? 'First device', ...remaining[0] }
+    wallet.devices = remaining.slice(1)
+    for (const [token, entry] of tokens) if (entry.credentialId === body.credentialId) tokens.delete(token)
     saveWallet(wallet)
-    console.log(`[share] kit replacement for ${wallet.name ?? id}: passkey verified, phone + Swissquote re-issue the shares`)
-    return { kitReplaceToken: wallet.kitReplace.token }
+    emit({ type: 'device_removed', name: wallet.name, device: removed.name ?? 'First device' })
+    console.log(`[share] ${wallet.name ?? id} removed a device: ${removed.name ?? 'First device'}`)
+    return publicView(wallet)
   },
 
   'POST /wallets/:id/passkey': async (req, { id }, body) => {
     const wallet = mustWallet(id)
-    if (wallet.status !== 'registering' && wallet.recovery?.state !== 'ready') throw new HttpError(409, 'passkey already registered')
-    const creating = wallet.status === 'registering'
-    if (creating) {
-      if (!body.creationToken || body.creationToken !== wallet.creationToken) throw new HttpError(403, 'wallet creation session required')
-    } else requireRecovery(wallet, body.recoveryToken)
+    if (wallet.status !== 'registering') throw new HttpError(409, 'passkey already registered')
+    if (!body.creationToken || body.creationToken !== wallet.creationToken) throw new HttpError(403, 'wallet creation session required')
     const { origin, rpID } = walletOrigin(req, wallet)
-    const challengeKey = creating ? `register:${id}` : `recover:${body.recoveryToken}`
-    const expectedChallenge = takeChallenge(challengeKey)
+    const expectedChallenge = takeChallenge(`register:${id}`)
     if (!expectedChallenge) throw new HttpError(400, 'registration expired, request new options')
     const result = await verifyRegistrationResponse({
       response: body.response,
@@ -346,62 +367,26 @@ const routes = {
     })
     if (!result.verified) throw new HttpError(401, 'passkey registration failed')
     const { credential } = result.registrationInfo
-    // Async verification must not resurrect a cancelled or superseded recovery.
     const latest = mustWallet(id)
-    const registered = { id: credential.id, publicKey: b64(credential.publicKey), counter: credential.counter }
-    if (creating) {
-      if (latest.status !== 'registering') throw new HttpError(409, 'registration already completed')
-      latest.credential = registered
-      latest.status = 'keygen'
-    } else {
-      requireRecovery(latest, body.recoveryToken)
-      latest.recovery.pendingCredential = registered
-    }
+    if (latest.status !== 'registering') throw new HttpError(409, 'registration already completed')
+    latest.credential = { id: credential.id, publicKey: b64(credential.publicKey), counter: credential.counter, name: 'First device', addedAt: Date.now() }
+    latest.status = 'keygen'
     saveWallet(latest)
     return { ok: true }
   },
 
-  // New passkey for the new phone, only once a recovery has passed its delay.
-  'POST /wallets/:id/passkey/options': async (req, { id }, body) => {
-    const wallet = mustWallet(id)
-    requireRecovery(wallet, body.recoveryToken)
-    const { rpID } = walletOrigin(req, wallet)
-    const options = await registrationOptions(rpID, wallet.name ?? 'Swissquote client')
-    requireRecovery(mustWallet(id), body.recoveryToken)
-    saveChallenge(`recover:${body.recoveryToken}`, options.challenge)
-    return { options }
-  },
-
-  // 2. Distributed key generation (new wallet) or lost-share recovery: Swissquote is party 1.
+  // 2. Distributed key generation of a new wallet: the client's device is party 0, Swissquote party 1.
   'POST /wallets/:id/keygen/start': (req, { id }, body) => {
     const wallet = mustWallet(id)
     walletOrigin(req, wallet)
     if ([...sessions.values()].some((s) => s.walletId === id && s.kind !== 'sign')) throw new HttpError(409, 'a key generation session is already running')
-    let session
-    let kind
-    if (wallet.status === 'keygen' && wallet.credential) {
-      if (!body.creationToken || body.creationToken !== wallet.creationToken) throw new HttpError(403, 'wallet creation session required')
-      kind = 'create'
-      session = new KeygenSession(3, 2, 1)
-    } else if (wallet.recovery?.state === 'ready' && wallet.recovery.pendingCredential) {
-      requireRecovery(wallet, body.recoveryToken)
-      kind = 'recover'
-      session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
-    } else if (wallet.pairing && wallet.pairing.expires > Date.now()) {
-      if (!body.pairingToken || body.pairingToken !== wallet.pairing.token) throw new HttpError(403, 'device pairing session required')
-      kind = 'pair'
-      session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([0]))
-    } else if (wallet.kitReplace && wallet.kitReplace.expires > Date.now()) {
-      if (!body.kitReplaceToken || body.kitReplaceToken !== wallet.kitReplace.token) throw new HttpError(403, 'kit replacement session required')
-      kind = 'replace-kit'
-      // Party 2 (the kit) is the lost share; phone and Swissquote rebuild it and refresh their own.
-      session = KeygenSession.initKeyRecovery(Keyshare.fromBytes(unb64(wallet.shareB)), new Uint8Array([2]))
-    } else {
-      throw new HttpError(409, 'wallet is not ready for key generation')
-    }
+    if (wallet.status !== 'keygen' || !wallet.credential) throw new HttpError(409, 'wallet is not ready for key generation')
+    if (!body.creationToken || body.creationToken !== wallet.creationToken) throw new HttpError(403, 'wallet creation session required')
+    const kind = 'create'
+    const session = new KeygenSession(2, 2, 1)
     const sid = randomUUID()
     const first = session.createFirstMessage()
-    sessions.set(sid, { kind, walletId: id, session, stage: 1, created: Date.now(), epoch: wallet.epoch ?? 1, recoveryToken: body.recoveryToken, pairingToken: body.pairingToken, kitReplaceToken: body.kitReplaceToken })
+    sessions.set(sid, { kind, walletId: id, session, stage: 1, created: Date.now(), epoch: wallet.epoch ?? 1 })
     return { sessionId: sid, kind, messages: [toWire(first)] }
   },
 
@@ -409,9 +394,7 @@ const routes = {
     const state = sessions.get(sid)
     if (!state) throw new HttpError(404, 'unknown or finished session')
     walletOrigin(req, mustWallet(state.walletId))
-    if (state.kind === 'recover') requireRecovery(mustWallet(state.walletId), state.recoveryToken)
     const incoming = (body.messages ?? []).map(fromWire)
-    if (state.proofId && incoming.some((m) => m.from_id !== 2)) throw new HttpError(403, 'recovery proof requires the kit party')
     try {
       return state.kind === 'sign' ? signStep(sid, state, incoming) : keygenStep(sid, state, incoming, body)
     } catch (error) {
@@ -425,6 +408,15 @@ const routes = {
 
   'GET /wallets/:id': (req, { id }) => publicView(mustWallet(id)),
 
+  // For the client's "How my key works" view: a fingerprint (SHA-256) and size of Swissquote's part,
+  // never the part itself.
+  'GET /wallets/:id/parts': (req, { id }) => {
+    const wallet = mustWallet(id)
+    if (!wallet.shareB) throw new HttpError(409, 'wallet not active')
+    const shareB = unb64(wallet.shareB)
+    return { publicKey: wallet.publicKey, swissquote: { party: 1, bytes: shareB.length, fingerprint: createHash('sha256').update(shareB).digest('hex').slice(0, 16) } }
+  },
+
   // 3. Log in with the passkey before co-signing (short-lived token).
   'POST /wallets/:id/auth/options': async (req, { id }) => {
     const wallet = mustWallet(id)
@@ -432,7 +424,7 @@ const routes = {
     const { rpID } = walletOrigin(req, wallet)
     const options = await generateAuthenticationOptions({
       rpID,
-      allowCredentials: [{ id: wallet.credential.id }],
+      allowCredentials: credentialsOf(wallet).map((c) => ({ id: c.id })),
       userVerification: 'required',
     })
     const challengeId = randomUUID()
@@ -453,21 +445,15 @@ const routes = {
     walletOrigin(req, wallet)
     if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
     requireToken(id, body.token)
-    if ((body.epoch ?? 1) !== (wallet.epoch ?? 1)) {
-      emit({ type: 'replaced_device_refused', name: wallet.name })
-      throw new HttpError(409, 'This phone was replaced by a recovery or a newly paired device. Its key share is no longer valid.')
-    }
     const intent =
       body.chain === 'bitcoin'
         ? btcIntent(wallet, body.psbt, body.inputIndex ?? 0)
         : body.chain === 'base-gasless'
           ? gaslessIntent(wallet, body.authorization)
-          : body.chain === 'backup'
-            ? backupIntent(wallet, body.backup)
-            : evmIntent(wallet, body.unsignedTx)
+          : evmIntent(wallet, body.unsignedTx)
     screenRecipients(wallet, intent.recipients)
     if (intent.usdc > HIGH_VALUE_USDC && !body.confirmHighValue)
-      throw new HttpError(428, `transfers above ${HIGH_VALUE_USDC} USDC need an extra confirmation`)
+      throw new HttpError(428, `transfers above ${HIGH_VALUE_USDC} USDC or EURC need an extra confirmation`)
     const entry = tokens.get(body.token)
     const signingIntent = body.chain === 'bitcoin' ? createHash('sha256').update(body.psbt).digest('hex') : b64(intent.hash)
     if (entry.signingIntent && entry.signingIntent !== signingIntent) throw new HttpError(401, 'a new transfer requires a fresh passkey login')
@@ -478,73 +464,6 @@ const routes = {
     sessions.set(sid, { kind: 'sign', walletId: id, session, stage: 1, hash: intent.hash, created: Date.now() })
     console.log(`[share] co-signing ${intent.summary}`)
     return { sessionId: sid, messages: [toWire(first)], hash: b64(intent.hash) }
-  },
-
-  // Only a fixed, random recovery challenge can be signed with B + C here. Never an arbitrary hash.
-  'POST /wallets/:id/recovery/proof/start': (req, { id }) => {
-    const wallet = mustWallet(id)
-    walletOrigin(req, wallet)
-    if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
-    const proofId = randomUUID()
-    const hash = new Uint8Array(createHash('sha256').update(`Swissquote recovery proof v1:${id}:${wallet.epoch ?? 1}:${proofId}`).digest())
-    recoveryProofs.set(proofId, { walletId: id, hash, epoch: wallet.epoch ?? 1, expires: Date.now() + 120_000 })
-    const session = new SignSession(Keyshare.fromBytes(unb64(wallet.shareB)), 'm')
-    const sid = randomUUID()
-    sessions.set(sid, { kind: 'sign', walletId: id, session, stage: 1, hash, created: Date.now(), proofId })
-    return { proofId, sessionId: sid, hash: b64(hash), messages: [toWire(session.createFirstMessage())] }
-  },
-
-  // 5. Recovery: actual kit possession + mock re-KYC + owner-vetoable delay.
-  'POST /wallets/:id/recovery/request': (req, { id }, body) => {
-    const wallet = mustWallet(id)
-    walletOrigin(req, wallet)
-    if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
-    const attacker = body.kyc !== 'match'
-    emit({ type: 'recovery_requested', by: attacker ? 'attacker' : 'client' })
-    if (attacker) {
-      emit({ type: 'recovery_refused', reason: 'Liveness selfie does not match the KYC profile' })
-      throw new HttpError(403, 'Identity check failed: the selfie does not match the client on file. Recovery refused and the client was alerted.')
-    }
-    const proof = recoveryProofs.get(body.proofId)
-    recoveryProofs.delete(body.proofId)
-    if (!proof || !proof.signed || proof.walletId !== id || proof.expires < Date.now() || proof.epoch !== (wallet.epoch ?? 1))
-      throw new HttpError(403, 'a fresh recovery-kit possession proof is required')
-    let valid = false
-    try {
-      valid = secp256k1.verify(unb64(body.signature), proof.hash, unb64(wallet.publicKey), { prehash: false, lowS: false })
-    } catch {}
-    if (!valid) throw new HttpError(403, 'invalid recovery-kit possession proof')
-    // A page reload may lose its bearer token. A new valid kit proof can resume, but never reset,
-    // an existing delay or replace its pending credential.
-    if (wallet.recovery?.state === 'pending' || wallet.recovery?.state === 'ready') {
-      wallet.recovery.token ??= randomUUID() // allow an earlier prototype request to resume safely
-      saveWallet(wallet)
-      return { ...publicView(wallet), recoveryToken: wallet.recovery.token }
-    }
-    const recoveryToken = randomUUID()
-    wallet.recovery = { state: 'pending', token: recoveryToken, requestedAt: Date.now(), readyAt: Date.now() + RECOVERY_DELAY_MS }
-    saveWallet(wallet)
-    console.log(`[share] recovery requested for ${id}, ready in ${RECOVERY_DELAY_MS / 1000}s; alerts sent to all client channels (mock)`)
-    return { ...publicView(wallet), recoveryToken }
-  },
-
-  // 6. Owner veto: whoever still holds the current passkey can stop a recovery during the delay
-  //    (and after it, until MPC recovery completes and commits the pending passkey).
-  'POST /wallets/:id/recovery/cancel': (req, { id }, body) => {
-    const wallet = mustWallet(id)
-    requireToken(id, body.token)
-    const r = wallet.recovery
-    if (!r || !(r.state === 'pending' || r.state === 'ready'))
-      throw new HttpError(409, 'There is no recovery to cancel.')
-    wallet.recovery = { state: 'cancelled', requestedAt: r.requestedAt, readyAt: r.readyAt, cancelledAt: Date.now() }
-    for (const [sid, state] of sessions) if (state.walletId === id && state.kind === 'recover') {
-      sessions.delete(sid)
-      try { state.session.free() } catch {}
-    }
-    saveWallet(wallet)
-    emit({ type: 'recovery_cancelled', name: wallet.name })
-    console.log(`[share] recovery for ${wallet.name ?? id} cancelled by the owner's passkey`)
-    return publicView(wallet)
   },
 
   // 7. Gasless USDC: submit a signed EIP-3009 authorization; the treasury pays the network fee.
@@ -572,105 +491,30 @@ const routes = {
     saveWallet(latest)
     let hash
     try {
-      hash = await treasury.relayUsdcAuthorization(typedData.message, body.signature)
+      hash = await treasury.relayUsdcAuthorization(typedData.message, body.signature, typedData.domain.verifyingContract)
     } catch (error) {
       if (treasuryEmpty(error)) throw new HttpError(409, `Free transfers are unavailable: Swissquote's fee account is empty (top up ${treasury.address}). Tick "Pay it myself" to use your own ETH.`)
       // e.g. "transfer amount exceeds balance": USDC already accepted the signature at that point.
-      throw new HttpError(400, `USDC rejected the transfer: ${error.cause?.reason ?? error.shortMessage ?? error.message}`)
+      throw new HttpError(400, `${typedData.domain.name} rejected the transfer: ${error.cause?.reason ?? error.shortMessage ?? error.message}`)
     }
-    console.log(`[share] relayed gasless ${formatUnits(typedData.message.value, 6)} USDC for ${wallet.name ?? id}: ${hash}`)
+    console.log(`[share] relayed gasless ${formatUnits(typedData.message.value, 6)} ${typedData.domain.name} for ${wallet.name ?? id}: ${hash}`)
     return { hash, sponsoredBy: treasury.address, remainingToday: reservation.remaining }
   },
 
-  // 8. On-chain kit backup (contracts/src/KitBackupMailbox.sol). The treasury pays the gas, only for
-  //    messages this wallet signed with phone + Swissquote in the same passkey session.
-  'POST /wallets/:id/backup/inbox': async (req, { id }, body) => {
-    const { wallet, typedData } = await approvedBackup(req, id, body, 'inbox')
-    const hash = await relayBackup(() => treasury.backup.registerInboxKey(typedData.message.owner, typedData.message.key, body.signature))
-    emit({ type: 'inbox_registered', name: wallet.name, hash })
-    console.log(`[share] ${wallet.name ?? id} can now hold friends' backups: ${hash}`)
-    return { hash }
-  },
-
-  'POST /wallets/:id/backup/create': async (req, { id }, body) => {
-    const { wallet, typedData } = await approvedBackup(req, id, body, 'backup')
-    const m = typedData.message
-    const { pieces, chunks } = body
-    if (!Array.isArray(pieces) || pieces.length !== m.friends.length || !pieces.every((p) => isHex(p) && p.length > 2 && p.length <= 2 + 2 * MAX_PIECE_BYTES))
-      throw new HttpError(400, 'one encrypted piece per friend is required')
-    if (piecesHashOf(pieces) !== m.piecesHash.toLowerCase()) throw new HttpError(400, 'the pieces do not match the signed backup')
-    if (!Array.isArray(chunks) || chunks.length !== m.kitChunks || !chunks.every((c) => isHex(c) && c.length > 2 && c.length <= 2 + 2 * CHUNK_BYTES))
-      throw new HttpError(400, 'invalid kit chunks')
-    if (chainHash(chunks) !== m.kitHash.toLowerCase()) throw new HttpError(400, 'the kit chunks do not match the signed backup')
-    const args = [m.wallet, m.setId, m.kitHash, m.kitChunks, m.friends, pieces, body.signature]
-    const { create, uploads } = await relayBackup(() => treasury.backup.createBackup(args, chunks))
-    emit({ type: 'backup_onchain', name: wallet.name, friends: m.friends.length, hash: create })
-    console.log(`[share] on-chain kit backup for ${wallet.name ?? id} with ${m.friends.length} friends: ${create} + ${uploads.length} kit chunks`)
-    return { hash: create, uploads }
-  },
-
-  // A friend gives a piece back to the client's new phone. No login: the piece is encrypted to that
-  // phone's one-time key, and the contract caps the returns per request. Rate-limited because the
-  // treasury pays.
-  'POST /backup/return': async (req, params, body) => {
-    if (!isHex(body.requestId) || body.requestId.length !== 66) throw new HttpError(400, 'invalid request id')
-    if (!isHex(body.sealed) || body.sealed.length <= 2 || body.sealed.length > 2 + 2 * MAX_PIECE_BYTES) throw new HttpError(400, 'invalid piece')
-    if (!takeReturnSlot()) throw new HttpError(429, 'too many pieces given back in the last hour; try again later')
-    const hash = await relayBackup(() => treasury.backup.returnPiece(body.requestId, body.sealed))
-    emit({ type: 'piece_returned', hash, name: typeof body.from === 'string' ? body.from.slice(0, 40) : undefined })
-    console.log(`[share] a friend gave back a backup piece: ${hash}`)
-    return { hash }
-  },
-}
-
-async function approvedBackup(req, id, body, kind) {
-  const wallet = mustWallet(id)
-  walletOrigin(req, wallet)
-  if (wallet.status !== 'active') throw new HttpError(409, 'wallet not active')
-  requireToken(id, body.token)
-  if (body.backup?.kind !== kind) throw new HttpError(400, `expected a ${kind} message`)
-  const intent = backupIntent(wallet, body.backup)
-  // Same rule as the gasless relay: the treasury only pays for the message approved in this passkey session.
-  if (tokens.get(body.token).signingIntent !== b64(intent.hash)) throw new HttpError(403, 'the backup must be approved by Swissquote in this passkey session')
-  let signer
-  try {
-    signer = await recoverTypedDataAddress({ ...intent.typedData, signature: body.signature })
-  } catch {
-    throw new HttpError(401, 'invalid backup signature')
-  }
-  if (signer !== getAddress(wallet.evmAddress)) throw new HttpError(401, 'the backup is not signed by this wallet')
-  return { wallet, typedData: intent.typedData }
-}
-
-async function relayBackup(task) {
-  try {
-    return await task()
-  } catch (error) {
-    const reason = error.cause?.reason ?? error.cause?.data?.errorName ?? error.shortMessage ?? error.message
-    if (treasuryEmpty(error)) throw new HttpError(409, `Swissquote's fee account is empty, so it cannot pay the network fee. Top up ${treasury.address} with Base Sepolia ETH.`)
-    throw new HttpError(400, `The backup contract refused: ${reason}`)
-  }
 }
 
 // "insufficient funds" when sending, "gas required exceeds allowance (0)" when estimating gas.
 const treasuryEmpty = (error) => /insufficient funds|exceeds allowance \(0\)/i.test(`${error?.message} ${error?.cause?.message ?? ''} ${error?.shortMessage ?? ''}`)
 
-const returnTimes = []
-function takeReturnSlot() {
-  const hourAgo = Date.now() - 3_600_000
-  while (returnTimes.length && returnTimes[0] < hourAgo) returnTimes.shift()
-  if (returnTimes.length >= 60) return false
-  returnTimes.push(Date.now())
-  return true
+function mustInvite(wallet, inviteToken) {
+  if (!wallet.invite || !inviteToken || wallet.invite.token !== inviteToken || wallet.invite.expires < Date.now())
+    throw new HttpError(403, 'This link has expired or was already used. Create a new one on your other device.')
+  return wallet.invite
 }
 
 function mustWallet(id) {
   const wallet = loadWallet(id)
   if (!wallet) throw new HttpError(404, 'unknown wallet')
-  if (wallet.recovery?.state === 'pending' && Date.now() >= wallet.recovery.readyAt) {
-    wallet.recovery.state = 'ready'
-    saveWallet(wallet)
-  }
   return wallet
 }
 
@@ -691,13 +535,15 @@ function findWalletByCredential(credentialId) {
   if (!credentialId) return null
   for (const file of readdirSync(join(DATA_DIR, 'wallets'))) {
     const wallet = JSON.parse(readFileSync(join(DATA_DIR, 'wallets', file), 'utf8'))
-    if (wallet.credential?.id === credentialId) return mustWallet(wallet.id)
+    if (credentialsOf(wallet).some((c) => c.id === credentialId)) return mustWallet(wallet.id)
   }
   return null
 }
 
 async function verifyLogin(req, wallet, response, expectedChallenge) {
   if (!wallet.credential) throw new HttpError(409, 'no passkey registered')
+  const used = credentialsOf(wallet).find((c) => c.id === response?.id)
+  if (!used) throw new HttpError(401, 'This passkey is not (or no longer) allowed for this wallet.')
   if (!expectedChallenge) throw new HttpError(400, 'login expired, please try again')
   const { origin, rpID } = walletOrigin(req, wallet)
   const result = await verifyAuthenticationResponse({
@@ -705,18 +551,19 @@ async function verifyLogin(req, wallet, response, expectedChallenge) {
     expectedChallenge,
     expectedOrigin: origin,
     expectedRPID: rpID,
-    credential: { id: wallet.credential.id, publicKey: unb64(wallet.credential.publicKey), counter: wallet.credential.counter },
+    credential: { id: used.id, publicKey: unb64(used.publicKey), counter: used.counter },
     requireUserVerification: true,
   })
   if (!result.verified) throw new HttpError(401, 'passkey check failed')
   const latest = mustWallet(wallet.id)
-  if (latest.credential?.id !== wallet.credential.id || (latest.epoch ?? 1) !== (wallet.epoch ?? 1)) throw new HttpError(401, 'wallet changed during login; authenticate again')
-  latest.credential.counter = result.authenticationInfo.newCounter
+  const current = credentialsOf(latest).find((c) => c.id === used.id)
+  if (!current || (latest.epoch ?? 1) !== (wallet.epoch ?? 1)) throw new HttpError(401, 'wallet changed during login; authenticate again')
+  current.counter = result.authenticationInfo.newCounter
   latest.origin ??= origin
   latest.rpID ??= rpID
   saveWallet(latest)
   const token = randomUUID()
-  tokens.set(token, { walletId: wallet.id, credentialId: latest.credential.id, epoch: latest.epoch ?? 1, expires: Date.now() + 5 * 60_000 })
+  tokens.set(token, { walletId: wallet.id, credentialId: used.id, epoch: latest.epoch ?? 1, expires: Date.now() + 5 * 60_000 })
   return token
 }
 
@@ -727,29 +574,21 @@ function publicView(wallet) {
     status: wallet.status,
     btcAddress: wallet.btcAddress,
     evmAddress: wallet.evmAddress,
-    // Bumped whenever recovery or pairing issues new shares: a device holding an older share was replaced.
+    devices: credentialsOf(wallet).map((c, i) => ({ id: c.id, name: c.name ?? (i === 0 ? 'First device' : 'Another device'), addedAt: c.addedAt ?? wallet.createdAt })),
     epoch: wallet.epoch ?? 1,
-    recovery: wallet.recovery
-      ? {
-          state: wallet.recovery.state,
-          readyAt: wallet.recovery.readyAt,
-          cancelledAt: wallet.recovery.cancelledAt ?? null,
-          // Registering a new passkey only stages it; the owner can veto until recovery commits.
-          canCancel: wallet.recovery.state === 'pending' || wallet.recovery.state === 'ready',
-        }
-      : null,
   }
 }
 
-// Production: Share B encrypted to the escrow agent's HSM key, under a contract with the agent.
-function depositWithEscrow(wallet, announce) {
+// A copy of Swissquote's part for the grace period. Production: encrypted to the escrow agent's HSM
+// key, under a contract with the agent.
+function depositWithEscrow(wallet) {
   const body = { token: ESCROW_DEPOSIT_TOKEN, walletId: wallet.id, name: wallet.name ?? null, epoch: wallet.epoch ?? 1, publicKey: wallet.publicKey, shareB: wallet.shareB }
   fetch(`${ESCROW_URL}/deposit`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(3000) })
     .then((res) => {
       if (!res.ok) throw new Error(`status ${res.status}`)
-      if (announce) emit({ type: 'escrow_deposited', name: wallet.name })
+      emit({ type: 'escrow_deposited', name: wallet.name })
     })
-    .catch((error) => console.log(`[share] escrow agent not reached (${error.message}); Share B not deposited for ${wallet.name ?? wallet.id}`))
+    .catch((error) => console.log(`[share] escrow agent not reached (${error.message}); Swissquote's part not deposited for ${wallet.name ?? wallet.id}`))
 }
 
 function keygenStep(sid, state, incoming, body) {
@@ -768,46 +607,22 @@ function keygenStep(sid, state, incoming, body) {
       sessions.delete(sid)
       const share = session.keyshare()
       const wallet = loadWallet(state.walletId)
-      if ((wallet.epoch ?? 1) !== state.epoch) throw new HttpError(409, 'wallet shares changed during key generation')
-      if (state.kind === 'recover') requireRecovery(wallet, state.recoveryToken)
-      if (state.kind === 'pair' && (wallet.pairing?.token !== state.pairingToken || wallet.pairing.expires < Date.now())) throw new HttpError(403, 'device pairing expired')
-      if (state.kind === 'replace-kit' && (wallet.kitReplace?.token !== state.kitReplaceToken || wallet.kitReplace.expires < Date.now()))
-        throw new HttpError(403, 'kit replacement expired')
+      if (wallet.status !== 'keygen') throw new HttpError(409, 'wallet already created')
       const publicKey = share.publicKey
-      if (state.kind !== 'create' && b64(publicKey) !== wallet.publicKey) throw new HttpError(500, 'recovery produced a different key')
       Object.assign(wallet, {
         shareB: b64(share.toBytes()),
         publicKey: b64(publicKey),
         publicKeyCompressed: b64(secp256k1.Point.fromBytes(publicKey).toBytes(true)),
         ...addressesFor(publicKey),
         status: 'active',
-        // New shares for everyone: Share B changed, so the replaced device's Share A no longer pairs with it.
-        epoch: state.kind === 'create' ? 1 : (wallet.epoch ?? 1) + 1,
+        epoch: 1,
       })
-      if (state.kind === 'recover') {
-        wallet.credential = wallet.recovery.pendingCredential
-        wallet.recovery = { state: 'completed', completedAt: Date.now() }
-      }
-      if (state.kind === 'pair') delete wallet.pairing
-      if (state.kind === 'replace-kit') delete wallet.kitReplace
       delete wallet.creationToken
-      if (state.kind !== 'create') {
-        revokeTokens(wallet.id)
-        for (const [pendingSid, pending] of sessions) if (pending.walletId === wallet.id) {
-          sessions.delete(pendingSid)
-          try { pending.session.free() } catch {}
-        }
-      }
       saveWallet(wallet)
-      depositWithEscrow(wallet, state.kind === 'create')
-      if (state.kind === 'create') {
-        emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
-        treasury.enqueue(wallet) // welcome bonus: test USDC + gas
-      }
-      else if (state.kind === 'pair') emit({ type: 'device_paired', name: wallet.name })
-      else if (state.kind === 'replace-kit') emit({ type: 'kit_replaced', name: wallet.name })
-      else emit({ type: 'recovery_completed' })
-      console.log(`[share] ${state.kind} done for ${wallet.name ?? wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
+      depositWithEscrow(wallet)
+      emit({ type: 'wallet_created', name: wallet.name, btcAddress: wallet.btcAddress, evmAddress: wallet.evmAddress })
+      treasury.enqueue(wallet) // welcome bonus: test USDC + gas
+      console.log(`[share] created ${wallet.name ?? wallet.id}: ${wallet.btcAddress} / ${wallet.evmAddress}`)
       return { publicKey: b64(publicKey), ...publicView(wallet) }
     }
     default:
@@ -826,10 +641,7 @@ function signStep(sid, state, incoming) {
       session.handleMessages(incoming)
       const last = session.lastMessage(state.hash) // single use: the session is dropped right after
       sessions.delete(sid)
-      if (state.proofId) {
-        const proof = recoveryProofs.get(state.proofId)
-        if (proof) proof.signed = true
-      } else emit({ type: 'signing', parties: ['A', 'B'] })
+      emit({ type: 'signing', parties: ['A', 'B'] })
       return { messages: [toWire(last)] }
     }
     default:

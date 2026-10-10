@@ -67,14 +67,6 @@ export const CARD_TRANSACTIONS = [
   { merchant: 'Migros Lausanne', amount: -42.35, status: 'Executed', icon: 'basket' },
 ] as const
 
-// Crypto that Swissquote holds for the client today (custodial). Moving it to the
-// self-custody wallet is the story of the pitch.
-export const CUSTODIED_CRYPTO = [
-  { symbol: 'BTC', name: 'Bitcoin', amount: 0.1234, valueChf: 7310.22, color: '#f7931a' },
-  { symbol: 'ETH', name: 'Ethereum', amount: 0.9, valueChf: 2079.45, color: '#627eea' },
-  { symbol: 'USDC', name: 'USD Coin', amount: 884.0, valueChf: 760.34, color: '#2775ca' },
-]
-
 export const PLANS = [
   { name: 'Global ETF savings plan', detail: 'CHF 250 every month', next: 'Next: 1 Nov', progress: 0.62 },
   { name: 'Pillar 3a', detail: 'CHF 7’258 yearly maximum', next: 'CHF 4’500 paid in', progress: 0.62 },

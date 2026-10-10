@@ -1213,6 +1213,10 @@ button.option:active {
   grid-template-columns: repeat(3, 1fr);
 }
 
+.segmented.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .pill.down {
   background: #fdecea;
   color: var(--error);
@@ -1624,4 +1628,217 @@ button.pill.action:disabled {
 .blocked-badge svg {
   width: 36px;
   height: 36px;
+}
+
+/* Two-part wallet: devices, pause and takeover */
+.notice-card {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.notice-card strong {
+  font-size: 16px;
+}
+
+.notice-card.paused {
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+.notice-card.ok {
+  background: var(--ok-soft);
+}
+
+.countdown {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.control-list .device-row {
+  padding-top: 0;
+}
+
+.control-list .device-row strong {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.control-list .device-row em {
+  font-style: normal;
+  color: var(--ok);
+}
+
+.control + .control,
+.control > .secondary {
+  margin-top: 12px;
+}
+
+.add-device {
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+
+.add-device .qr {
+  width: 220px;
+  height: 220px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+}
+
+.add-device .request-link,
+.add-device .kit-note,
+.add-device p {
+  width: 100%;
+}
+
+.join-device {
+  display: grid;
+  gap: 12px;
+}
+
+/* How my key works */
+.inspector {
+  display: grid;
+  gap: 18px;
+}
+
+.inspector h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.inspector p {
+  margin: 0 0 8px;
+}
+
+.inspector code {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inspector .kv {
+  display: grid;
+  gap: 2px 0;
+  font-size: 13px;
+}
+
+.inspector .kv span {
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.inspector .parts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.inspector .parts li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.inspector .parts em {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.inspector .parts em.ok {
+  color: var(--ok);
+}
+
+.inspector .parts em.bad {
+  color: var(--error);
+}
+
+.inspector .transcript {
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.inspector .transcript li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.inspector .transcript li.swissquote {
+  background: var(--accent-soft);
+}
+
+/* Receive: the same key on other networks */
+.other-networks {
+  width: 100%;
+  margin-top: 6px;
+  text-align: left;
+}
+
+.other-networks h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.other-networks ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.other-networks li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.other-networks li > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.other-networks li span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.other-networks code {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.other-networks .icon-btn {
+  flex: none;
+  border: none;
+  background: var(--bg);
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
 }

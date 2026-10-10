@@ -30,6 +30,14 @@ export function AddFundsSheet({ evmAddress, btcAddress, onCopy, onClose }: { evm
           </div>
           <External />
         </button>
+        <button className="option" onClick={() => open(USDC_FAUCET, evmAddress)}>
+          <span className="option-icon usdc">€</span>
+          <div>
+            <strong>Free test EURC</strong>
+            <span>Same Circle faucet · choose EURC and “Base Sepolia”</span>
+          </div>
+          <External />
+        </button>
         <button className="option" onClick={() => open(ETH_FAUCET, evmAddress)}>
           <span className="option-icon">
             <Drop />

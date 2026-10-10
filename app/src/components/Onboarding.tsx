@@ -17,14 +17,12 @@ export function Onboarding({
   error,
   onCreate,
   onLogin,
-  onRecover,
 }: {
   busy: boolean
   progress?: string
   error?: string
   onCreate: (name: string) => void
   onLogin: () => void
-  onRecover: () => void
 }) {
   const [name, setName] = useState(lastName)
   const trimmed = name.trim()
@@ -53,7 +51,7 @@ export function Onboarding({
         <br />
         <span className="accent-text">Your control.</span>
       </h1>
-      <p className="lead">One wallet for Bitcoin and Ethereum. No seed phrase: your face or fingerprint, plus a recovery kit you keep.</p>
+      <p className="lead">One wallet for Bitcoin and Ethereum. No seed phrase: one key in two parts, one on your devices (Face ID), one at Swissquote.</p>
 
       <ul className="perks">
         <li>
@@ -62,7 +60,7 @@ export function Onboarding({
           </span>
           <div>
             <strong>Sign with Face ID</strong>
-            <span>Your phone holds one of three key shares. The full key never exists anywhere.</span>
+            <span>Your device holds your part of the key. Every payment needs it plus Swissquote's part; the full key never exists anywhere.</span>
           </div>
         </li>
         <li>
@@ -70,8 +68,8 @@ export function Onboarding({
             <Shield />
           </span>
           <div>
-            <strong>Swissquote can never act alone</strong>
-            <span>It holds one share: it can check and co-sign, but not move or freeze your funds.</span>
+            <strong>Safer and free with Swissquote</strong>
+            <span>It blocks payments to malicious addresses and pays the network fee. It can never move your money alone.</span>
           </div>
         </li>
         <li>
@@ -79,8 +77,8 @@ export function Onboarding({
             <Users />
           </span>
           <div>
-            <strong>Lose your phone, not your money</strong>
-            <span>Your recovery kit plus an identity check bring the wallet back, with the same addresses.</span>
+            <strong>A copy on your other devices</strong>
+            <span>Add a phone or second laptop with its own Face ID. If Swissquote is ever gone, you get full control after a grace period.</span>
           </div>
         </li>
       </ul>
@@ -104,9 +102,7 @@ export function Onboarding({
       <button className="secondary big with-icon" onClick={onLogin} disabled={busy}>
         <Fingerprint /> Log in with my passkey
       </button>
-      <button className="text-btn" onClick={onRecover} disabled={busy}>
-        Lost your phone and passkey? Recover with your kit
-      </button>
+      <p className="muted small center">Your wallet is on another device? Tap “Add a device” there and open the link on this one.</p>
     </section>
   )
 }

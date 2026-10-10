@@ -5,7 +5,9 @@
   "scripts": {
     "hub": "node hub.mjs",
     "share": "node share-service.mjs",
-    "escrow": "node escrow-agent.mjs"
+    "escrow": "node escrow-agent.mjs",
+    "insider": "node insider-attempt.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",

@@ -12,6 +12,7 @@
   "dependencies": {
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
+    "@scure/base": "^1.2.6",
     "@scure/btc-signer": "^2.4.1",
     "@silencelaboratories/dkls-wasm-ll-web": "^1.2.0",
     "@simplewebauthn/browser": "^14.0.0",

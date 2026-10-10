@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { FeedItem } from './live'
 
-type NodeId = 'phone' | 'sq' | 'kit' | 'kyc' | 'compliance' | 'registry' | 'notify' | 'btc' | 'base'
-type EdgeId = 'phone-sq' | 'phone-kit' | 'kit-sq' | 'sq-mocks' | 'phone-btc' | 'phone-base'
+type NodeId = 'phone' | 'sq' | 'copy' | 'escrow' | 'compliance' | 'registry' | 'sponsor' | 'btc' | 'base'
+type EdgeId = 'phone-sq' | 'phone-copy' | 'copy-sq' | 'sq-mocks' | 'phone-btc' | 'phone-base'
 type Highlight = { nodes: NodeId[]; edges: EdgeId[]; alert?: NodeId[] }
 
 const FLASH_MS = 3200
@@ -11,24 +11,24 @@ const FLASH_MS = 3200
 function highlightFor(item: FeedItem): Highlight {
   switch (item.type) {
     case 'wallet_created':
-      return { nodes: ['phone', 'sq', 'kit', 'registry'], edges: ['phone-sq', 'phone-kit', 'kit-sq', 'sq-mocks'] }
-    case 'signing': {
-      const key = [...item.parties].sort().join('')
-      if (key === 'AB') return { nodes: ['phone', 'sq', 'compliance'], edges: ['phone-sq', 'sq-mocks'] }
-      if (key === 'AC') return { nodes: ['phone', 'kit'], edges: ['phone-kit'] }
-      return { nodes: ['sq', 'kit'], edges: ['kit-sq'] }
-    }
+      return { nodes: ['phone', 'sq', 'registry'], edges: ['phone-sq', 'sq-mocks'] }
+    case 'signing':
+      return item.alone ? { nodes: ['copy'], edges: [] } : { nodes: ['phone', 'sq', 'compliance'], edges: ['phone-sq', 'sq-mocks'] }
     case 'funded':
       return { nodes: ['sq', 'base'], edges: [] }
     case 'tx_broadcast':
-      return item.chain === 'bitcoin' ? { nodes: ['phone', 'btc'], edges: ['phone-btc'] } : { nodes: ['phone', 'base'], edges: ['phone-base'] }
-    case 'recovery_requested':
-      return { nodes: ['sq', 'kyc', 'notify'], edges: ['phone-sq', 'sq-mocks'] }
-    case 'recovery_refused':
-      return { nodes: ['notify'], edges: [], alert: ['kyc', 'sq'] }
-    case 'recovery_completed':
-    case 'device_paired':
-      return { nodes: ['phone', 'sq', 'kit', 'notify'], edges: ['kit-sq', 'phone-kit', 'sq-mocks'] }
+      if (item.chain === 'bitcoin') return { nodes: ['phone', 'btc'], edges: ['phone-btc'] }
+      return item.sponsored ? { nodes: ['sponsor', 'base'], edges: ['sq-mocks'] } : { nodes: ['phone', 'base'], edges: ['phone-base'] }
+    case 'escrow_deposited':
+      return { nodes: ['sq', 'escrow'], edges: ['sq-mocks'] }
+    case 'payment_blocked':
+      return { nodes: ['phone'], edges: ['phone-sq'], alert: ['sq', 'compliance'] }
+    case 'device_added':
+      return { nodes: ['phone', 'copy', 'sq'], edges: ['phone-copy', 'copy-sq'] }
+    case 'device_removed':
+      return { nodes: ['copy', 'sq'], edges: ['copy-sq'], alert: ['phone'] }
+    case 'takeover_released':
+      return { nodes: ['copy', 'escrow'], edges: [], alert: ['sq'] }
     default:
       return { nodes: [], edges: [] }
   }
@@ -55,7 +55,7 @@ export function LiveArchitecture({ items, shareOnline }: { items: FeedItem[]; sh
     ['la-node', extra, on(id) ? 'on' : '', alert(id) ? 'alert' : '', id === 'sq' && sqDown ? 'down' : ''].join(' ')
 
   return (
-    <svg className="live-arch" viewBox="0 0 1000 470" role="img" aria-label="Live architecture: phone, Swissquote share service, recovery kit and blockchains">
+    <svg className="live-arch" viewBox="0 0 1000 470" role="img" aria-label="Live architecture: the client's devices, Swissquote share service and blockchains">
       <defs>
         <marker id="la-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M0 0L10 5L0 10z" fill="#9aa1ad" />
@@ -68,8 +68,8 @@ export function LiveArchitecture({ items, shareOnline }: { items: FeedItem[]; sh
       {/* edges first, so nodes sit on top */}
       <g className="la-edges">
         <Edge on={edgeOn('phone-sq')} d="M290 100H375" both />
-        <Edge on={edgeOn('phone-kit')} d="M165 160V318" both />
-        <Edge on={edgeOn('kit-sq')} d="M290 385H335V135H375" both />
+        <Edge on={edgeOn('phone-copy')} d="M165 160V318" both />
+        <Edge on={edgeOn('copy-sq')} d="M290 385H335V135H375" both />
         <Edge on={edgeOn('sq-mocks')} d="M500 160V226" />
         <Edge on={edgeOn('phone-btc')} d="M165 40V18H680V85H710" />
         <Edge on={edgeOn('phone-base')} d="M680 85V205H710" />
@@ -79,18 +79,18 @@ export function LiveArchitecture({ items, shareOnline }: { items: FeedItem[]; sh
         <rect x="40" y="40" width="250" height="120" rx="14" />
         <circle cx="66" cy="68" r="13" className="badge" />
         <text x="66" y="73" className="badge-text">A</text>
-        <text x="88" y="74" className="title">Anna's phone</text>
-        <text x="58" y="104" className="sub">Swissquote app · MPC party A</text>
-        <text x="58" y="128" className="sub">Share A unlocked by Face ID</text>
+        <text x="88" y="74" className="title">Your laptop</text>
+        <text x="58" y="104" className="sub">Swissquote app · your part (A)</text>
+        <text x="58" y="128" className="sub">Unlocked by Face ID</text>
       </g>
 
-      <g className={cls('kit', 'share-c')}>
+      <g className={cls('copy', 'share-c')}>
         <rect x="40" y="320" width="250" height="120" rx="14" />
         <circle cx="66" cy="348" r="13" className="badge" />
-        <text x="66" y="353" className="badge-text">C</text>
-        <text x="88" y="354" className="title">Recovery kit</text>
-        <text x="58" y="384" className="sub">Encrypted Share C, held by</text>
-        <text x="58" y="408" className="sub">the client (or a relative)</text>
+        <text x="66" y="353" className="badge-text">A</text>
+        <text x="88" y="354" className="title">Your phone</text>
+        <text x="58" y="384" className="sub">Identical copy of your part,</text>
+        <text x="58" y="408" className="sub">its own Face ID passkey</text>
       </g>
 
       <g className={cls('sq', 'share-b mock')}>
@@ -104,10 +104,10 @@ export function LiveArchitecture({ items, shareOnline }: { items: FeedItem[]; sh
 
       {(
         [
-          ['kyc', 375, 228, 'KYC check'],
-          ['compliance', 505, 228, 'Sanctions'],
+          ['escrow', 375, 228, 'Escrow agent'],
+          ['compliance', 505, 228, 'Screening'],
           ['registry', 375, 308, 'Wallet registry'],
-          ['notify', 505, 308, 'Alerts'],
+          ['sponsor', 505, 308, 'Fee sponsor'],
         ] as const
       ).map(([id, x, y, label]) => (
         <g key={id} className={cls(id, 'mock small')}>

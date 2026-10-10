@@ -89,7 +89,7 @@ if [ "${1:-}" = "--tunnel" ]; then
       [ -n "$PUBLIC" ] && break
       sleep 0.5
     done
-    if [ -n "$PUBLIC" ]; then echo "  ✓ tunnel started (new address: wallets made on an older address need 'Recover with your kit')"; else echo "  ✗ tunnel did not start. See $LOGS/tunnel.log"; fi
+    if [ -n "$PUBLIC" ]; then echo "  ✓ tunnel started (create a demo wallet on this address; existing wallets stay bound to their original address)"; else echo "  ✗ tunnel did not start. See $LOGS/tunnel.log"; fi
   fi
 fi
 
@@ -105,7 +105,7 @@ echo "  Logs          $LOGS"
 if [ -n "$ADDRESS" ]; then
   echo "  Treasury      $ADDRESS · ${ETH:-?} ETH"
   if [ "${ETH:-0}" = "0" ] || [ "$ETH" = "0.0" ]; then
-    echo "                ↳ empty: free USDC transfers and the on-chain backup need Base Sepolia ETH here"
+    echo "                ↳ empty: sponsored USDC/EURC transfers need Base Sepolia ETH here"
     echo "                  (https://portal.cdp.coinbase.com/products/faucet)"
   fi
 fi

@@ -1,63 +1,64 @@
 # Threat model
 
-Scope: the 2-of-3 MPC wallet as built in this repository (phone = Share A, Swissquote share service = Share B, recovery kit = Share C). Key terms: [`handbook.md`](handbook.md). Design: [`custody-model.md`](custody-model.md).
+Scope: the two-part wallet as built in this repository (the client's part A on their devices, Swissquote's part B in the share service, a copy of B at the escrow agent). Design: [`custody-model.md`](custody-model.md). Key terms: [`handbook.md`](handbook.md).
 
 ## Assets
 
 | Asset | Where | Why it matters |
 |---|---|---|
-| Client funds (BTC, ETH, USDC) | Bitcoin testnet4 and Base Sepolia, at addresses derived from the shared public key | The thing to protect |
-| Share A | Phone (browser storage in the prototype) | One of three shares |
-| Share B | Swissquote share service storage | One of three shares |
-| Share C | Password-encrypted kit file | One of three shares; the only way to recover a lost phone |
-| Passkey | Phone's secure element / passkey manager | Swissquote only co-signs after a passkey login |
-| Kit password | Client's memory | Decrypts Share C |
-| Wallet record | Share service | Links client, addresses, passkey; drives recovery |
+| Client funds (BTC, ETH, USDC, EURC) | Bitcoin testnet4 and Base Sepolia, at addresses derived from the shared public key | The thing to protect |
+| Part A | Each of the client's devices (browser storage in the prototype) | Needed for every signature |
+| Part B | Share service storage | Needed for every signature |
+| Copy of B | Escrow agent storage | Released only after the grace period |
+| Passkeys | Each device's passkey manager (iCloud Keychain, Google Password Manager, Windows Hello) | Swissquote only co-signs after a passkey login from a registered device |
+| Add-a-device link | Shown once as a QR code / link on a device that has part A | Contains the one-time key for an encrypted copy of A |
+| Fee account (treasury) | Swissquote | Pays the gas of sponsored USDC/EURC transfers |
 
-**Rule of thumb:** an attacker needs **two shares** to move money. Every row below is about which two shares, and what stands in the way.
+**Rule:** moving money needs part A **and** part B. Each row below is about how an attacker would get both, and what stops them.
 
 ## Attackers and attack paths
 
-| # | Attacker / event | What they have | What they can do | What stops them | Residual risk |
+| # | Attacker / event | Has | Tries | What stops them | Residual risk |
 |---|---|---|---|---|---|
-| 1 | Thief with a **locked** phone | Device | Nothing | Device lock; Swissquote requires a passkey login (biometrics) before co-signing | None |
-| 2 | Thief with an **unlocked** phone | Share A (+ passkey if biometrics bypassed) | Prototype: read Share A from browser storage. Ask Swissquote to co-sign only with the passkey | Passkey login per payment; sanctions screening and high-value confirmation; client starts recovery, which issues new shares and locks the phone out (Swissquote refuses its outdated share with `409`) | Production must encrypt Share A with the passkey (PRF) so an unlocked phone is not enough |
-| 3 | Attacker with **phone + e-mail + SIM** (bonus scenario) | Share A, inbox, SMS | Try a recovery to their own phone | Recovery needs **the kit file and its password** (Share C) **and** a matching ID document + liveness selfie. E-mail and SMS codes are never accepted. Demo: refused with "the selfie does not match the client on file" | None for this combination |
-| 4 | Thief of the **kit file** | Encrypted Share C | Offline password guessing | PBKDF2-SHA256 with 310 000 iterations per guess; the kit alone is one share; a recovery would still need the identity check, the waiting period, and the owner not cancelling | Weak passwords: enforce strength in production |
-| 5 | Thief with **phone + kit + kit password** | A + C | **Can sign without Swissquote** (two shares) | Nothing cryptographic. The kit must not live on the phone, and the password must not be saved with it. The app tells clients this at backup time | Accepted: equivalent to losing both keys of a two-key safe |
-| 6 | **Malicious Swissquote insider** or a breach of the share service | Share B | Co-sign nothing without a second share; start no recovery without Share C | 1 of 3 shares; recovery needs the client's kit; production: HSM with dual control and audit log | Insider **plus** a stolen kit and password = theft (see #5) |
-| 7 | Swissquote service **tampered with** to sign a different transaction | Share B, control of the service | Return a hash for a transaction the client did not approve | The phone recomputes the hash of its own transaction and aborts if Swissquote's hash differs (`sameHash` check in `flows.ts`) | None |
-| 8 | **Compromised app frontend** (supply chain, malicious update) | Code running next to Share A | Exfiltrate Share A or show a fake recipient | Out of scope for the prototype. Production: native app, code signing, reproducible builds, Swissquote screening still sees the real recipient | Real risk for any wallet app |
-| 9 | Payment to a **sanctioned address** or an obvious scam | n/a | Client is tricked into sending | Swissquote decodes every co-signed transaction and blocks recipients on the sanctions list (mock list in `share-service.mjs`); `403` with a clear reason | Kit-signed payments (A + C) bypass screening by design |
-| 10 | **Social engineering of Swissquote support** to approve a recovery | Persuasion | Get a recovery started | Recovery still needs the kit (Share C); every request alerts all of the client's devices; the **current passkey can cancel** during the 48 h waiting period | If the attacker also has the kit, the waiting period and alerts are the last line of defence |
-| 11 | **Replay** of an old login or co-signing session | Captured traffic | Reuse it | Login tokens expire after 5 minutes and are bound to one wallet; signing sessions are single-use and bound to the hash Swissquote computed | None |
-| 12 | Old phone keeps working **after a recovery** | Old Share A | Sign with Swissquote | Recovery and pairing re-issue all shares and bump the wallet's `epoch`; Swissquote refuses co-signing with an older epoch (`409`) and the old phone shows a lockout card | Old Share A + **old** kit still pair offline (see #5); client must delete the old kit |
-| 13 | **Two trusted friends collude** (kit pieces) | The password-locked kit | Guess the kit password offline, then start a recovery or, with a Swissquote insider (Share B), sign directly | Two pieces only give back the **password-locked** kit: without the client's password they get nothing usable (tested). One piece alone cannot even be attacked (Shamir). Password guessing is slowed by PBKDF2 (310,000 rounds). A recovery still needs the identity check, the 48 h waiting period and no owner veto; **replacing the kit** makes all pieces worthless | Two friends who also crack a weak kit password, plus a Swissquote insider |
-| 14 | **Malicious escrow agent** | Copy of Share B | Same as a Swissquote insider | Steps in only after Swissquote has been unreachable for the outage period and the client passes its identity check; needs the client's kit (protocol fails otherwise); deletes its copy afterwards; production: HSM under a notary contract | Escrow + kit thief, only once Swissquote is gone |
-| 15 | **Abuse of gasless sponsoring** | A wallet | Drain Swissquote's gas budget | Relay only for a logged-in client, only this wallet's own USDC, only the exact authorization Swissquote screened in that login; persistent daily quota per wallet; duplicate nonces refused | Bounded by the quota |
+| 1 | Thief with a **locked** device | The device | Pay | Swissquote co-signs only after the device's passkey (Face ID); the client removes the device from another one | None while the device stays locked |
+| 2 | Thief with an **unlocked** device | Part A, maybe the passkey | Pay | Every payment still passes Swissquote's screening and the high-value confirmation; the client removes the device, after which Swissquote refuses its passkey | Small payments to unlisted addresses until the device is removed. Production: part A encrypted with the passkey (WebAuthn PRF) |
+| 3 | **Phishing** site | A fake page | Get a passkey signature | Passkeys are bound to the real domain; they do not work on a look-alike | None |
+| 4 | **Malicious Swissquote insider** or a breach of the share service | Part B | Sign alone | Two-party ECDSA: impossible without part A. Tested, and demonstrated on the real database (`npm run insider`) | None for signing; the insider could refuse service (see #9) |
+| 5 | Share service **tampered with** to sign another transaction | Control of the service | Return a hash for a different payment | The app builds the transaction itself and aborts if Swissquote's hash differs | None |
+| 6 | **Compromised app frontend** | Code next to part A | Exfiltrate part A or show a fake recipient | Part A alone cannot sign; screening still applies | Real for any app; production: code signing, app-store distribution, part A in the keychain |
+| 7 | Payment to a **scam or sanctioned address** | The client's trust | Trick the client into paying | Swissquote screens every recipient before it signs (mock list; production: a chain-analytics provider) | Addresses not yet on any list |
+| 8 | **Leaked add-a-device link** | The link within 10 minutes | Add their own device | Single use, 10 minutes, shown as a QR code; every added device appears in the device list and the live feed and can be removed | A short window if the link is shared carelessly |
+| 9 | **Swissquote unreachable or insolvent** | Nothing | — | The wallet pauses; after the grace period the escrow agent releases its copy of B to a device that proves it holds A | Funds are inaccessible during the grace period |
+| 10 | **Malicious escrow agent** | Copy of B | Sign alone, or with Swissquote | It holds the *same* part as Swissquote: together still one part. Releases only after the grace period, only to a device that co-signs a fresh challenge with part A | None for signing |
+| 11 | **Replay** of a login or a signing session | Captured traffic | Reuse it | Challenges are single-use and expire after 5 minutes; a login token authorizes one transfer; signing sessions are single-use | None |
+| 12 | **Abuse of gas sponsoring** | A wallet | Drain Swissquote's fee account | Only logged-in clients, only the authorization approved in that login, only USDC/EURC, a daily cap per wallet, quota reserved before any network call | Bounded by the cap |
 
-| 16 | **Swissquote swaps a friend's inbox key** (on-chain backup) | Share B, the relay | Collect friends' pieces by encrypting them to its own key | The contract accepts an inbox key only with a signature from the friend's own wallet (phone + Swissquote); Swissquote cannot sign alone. Tested in Foundry | None for a single party |
-| 17 | **Fake give-back link** sent to friends | Social engineering | Get pieces encrypted to the attacker's one-time key | 6-digit safety code on both phones, checked by phone call; even two fooled friends only yield the password-locked kit | Two fooled friends + a weak kit password |
-| 18 | **Spam on a give-back request** | Anyone | Fill the request with garbage | Unreadable pieces ignored; contract caps 8 per request; relay rate-limited; client makes a new request | Denial of service only |
+## What the automated tests prove
 
-Details of the on-chain backup: [`onchain-backup.md`](onchain-backup.md).
+`cd services && npm test` (21 tests; real MPC and real WebAuthn verification against the share service in its own process, with disposable storage and a local network stub):
+
+- Wallet creation needs its private session token; the key is created once; Swissquote's stored part is party 1 and differs from the client's.
+- Login challenges cannot be replayed; parallel prompts keep separate challenges.
+- Co-signing needs a passkey login and yields a valid signature for the wallet; one login authorizes one transfer only.
+- Malicious recipients are refused before a signing session exists.
+- Adding a device needs a login, a single-use invite and the new device's own passkey; Swissquote only ever relays the encrypted copy; the added device co-signs with its identical copy.
+- A removed device can no longer log in and its open sessions are revoked; the last device cannot be removed.
+- The gasless relay rejects malformed, unapproved, unknown-token and sanctioned authorizations before spending gas; sponsored USDC and EURC obey the daily cap.
+- Custody proof: Swissquote alone, Swissquote + the escrow copy, or Swissquote + a forged client part cannot produce a valid signature.
 
 ## Lock-out risks (losing access without an attacker)
 
-| Event | Result | Way back |
+| Event | Effect | Mitigation |
 |---|---|---|
-| Phone lost, kit safe | Temporary | Recovery: kit + Swissquote (identity check, 48 h) |
-| Kit lost, phone safe | No immediate impact | **Replace kit** (built): Face ID, then phone + Swissquote issue new shares and a new kit; the old kit stops working |
-| Swissquote offline or refuses | No impact on spending | Phone + kit sign without Swissquote |
-| Phone lost **and** Swissquote gone | Temporary | **Escrow agent** (built, mock) + kit rebuild the phone share |
-| Phone lost **and** Swissquote still operating but refusing | Locked out | Contractual recovery obligation; escrow only steps in when Swissquote is gone |
-| Phone **and** kit lost | Temporary, if pieces exist | Kit rebuilt from **2 of 3 friend pieces + the client's kit password** (built), then normal recovery. Without pieces or without the password: funds lost |
-| Passkey deleted, phone fine | Cannot co-sign with Swissquote | Sign with phone + kit, or recover |
+| One device lost | None: the other devices keep working | Remove it; add a new device from another one |
+| Every device lost | Wallet lost | The app suggests a second device right after creation |
+| Swissquote down for hours | Wallet paused | Wait; nothing is lost |
+| Swissquote gone for good | Wallet paused for the grace period | Escrow agent releases its copy of B |
+| Escrow agent gone too | Wallet stuck | Production: escrow with a regulated notary, copy in an HSM, contractual duty |
 
 ## Out of scope / accepted for the prototype
 
-- Share A is not encrypted at rest (documented, see #2).
-- Identity check, notifications and the sanctions list are mocks. The **policies** around them (what is required, what is refused, what is alerted) are real code in `services/share-service.mjs`.
-- Testnets only; no real funds.
-- The share service is one Node process with file storage, not an HSM.
-- The demo tunnel (`*.trycloudflare.com`) is public while it runs.
+- Part A is not encrypted at rest (see #2).
+- Client login, KYC and the list of malicious addresses are mocks. The **policies** around them are real code in `services/share-service.mjs`.
+- The share service is one Node process with file storage, not an HSM. The escrow deposit uses a shared demo token.
+- Testnets only; the demo tunnel (`*.trycloudflare.com`) is public while it runs.

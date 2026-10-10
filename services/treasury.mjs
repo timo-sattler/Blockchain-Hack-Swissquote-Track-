@@ -1,12 +1,11 @@
-// Swissquote treasury (MOCK): a funded testnet account that sends every new wallet a welcome bonus
-// of test USDC plus a little ETH for gas. In production this would be Swissquote paying for its
-// clients' gas (paymaster / sponsoring), not a cash gift.
+// Swissquote treasury (MOCK): a funded testnet account that pays the network fee of gasless USDC/EURC
+// transfers (EIP-3009 relay) and, when it holds enough, sends new wallets a small welcome bonus.
+// In production: Swissquote's fee sponsoring budget.
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createPublicClient, createWalletClient, erc20Abi, formatEther, formatUnits, http, parseEther, parseSignature, parseUnits } from 'viem'
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts'
 import { baseSepolia } from 'viem/chains'
-import { MAILBOX, mailboxAbi } from './backup-mailbox.mjs'
 
 const USDC = '0x036CbD53842c5426634e7929541eC2318f3dCF7e'
 const RPC_URL = process.env.RPC_URL ?? 'https://sepolia.base.org'
@@ -84,11 +83,11 @@ export function createTreasury(dataDir, emit) {
     console.log(`[treasury] funded ${wallet.name}: ${usdcHash ? STARTER_USDC : 0} USDC + ${STARTER_ETH} ETH`)
   }
 
-  // Gasless USDC: submit the client's signed authorization; the treasury pays the network fee.
-  async function relay(message, signature) {
+  // Gasless USDC / EURC: submit the client's signed authorization; the treasury pays the network fee.
+  async function relay(message, signature, token = USDC) {
     const { r, s, v, yParity } = parseSignature(signature)
     const request = {
-      address: USDC,
+      address: token,
       abi: transferWithAuthorizationAbi,
       functionName: 'transferWithAuthorization',
       args: [message.from, message.to, message.value, message.validAfter, message.validBefore, message.nonce, Number(v ?? 27n + BigInt(yParity)), r, s],
@@ -101,29 +100,6 @@ export function createTreasury(dataDir, emit) {
     return hash
   }
 
-  // On-chain kit backup: the treasury pays the gas, the contract checks the wallet's own signatures.
-  // The public RPC is load-balanced: right after our previous transaction, the next request can reach a
-  // node that has not seen it yet (stale state or nonce). Retry only BEFORE broadcasting: re-sending a
-  // broadcast chunk would store it twice and the backup would never complete.
-  async function mailboxCall(functionName, args, retries = 6) {
-    const request = { address: MAILBOX, abi: mailboxAbi, functionName, args }
-    let hash
-    for (let attempt = 0; !hash; attempt++) {
-      try {
-        await publicClient.simulateContract({ account, ...request }) // a refused call costs nothing
-        hash = await walletClient.writeContract(request)
-      } catch (error) {
-        const fatal = /insufficient funds|exceeds allowance \(0\)|BadSignature|BadInput|AlreadyExists|KitMismatch|TooManyReturns/i.test(String(error?.message))
-        if (fatal || attempt >= retries) throw error
-        console.log(`[treasury] ${functionName}: the RPC node is behind, retrying (${attempt + 1}/${retries})`)
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-      }
-    }
-    const receipt = await publicClient.waitForTransactionReceipt({ hash })
-    if (receipt.status !== 'success') throw new Error(`${functionName} reverted on-chain: ${hash}`)
-    return hash
-  }
-
   // One transaction at a time, so nonces never collide when several people join at once.
   let queue = Promise.resolve()
   const queued = (task) => {
@@ -133,20 +109,8 @@ export function createTreasury(dataDir, emit) {
   }
   return {
     address: account.address,
-    relayUsdcAuthorization(message, signature) {
-      return queued(() => relay(message, signature))
-    },
-    backup: {
-      registerInboxKey: (owner, key, signature) => queued(() => mailboxCall('registerInboxKey', [owner, key, signature])),
-      // The backup, then its locked kit in chunks; the contract only completes it if the chunks match the signed hash.
-      createBackup: (args, chunks) =>
-        queued(async () => {
-          const create = await mailboxCall('createBackup', args)
-          const uploads = []
-          for (const chunk of chunks) uploads.push(await mailboxCall('uploadKitChunk', [args[1], chunk]))
-          return { create, uploads }
-        }),
-      returnPiece: (requestId, sealedPiece) => queued(() => mailboxCall('returnPiece', [requestId, sealedPiece])),
+    relayUsdcAuthorization(message, signature, token) {
+      return queued(() => relay(message, signature, token))
     },
     enqueue(wallet) {
       queue = queue.then(() => fund(wallet)).catch((error) => console.error('[treasury] funding failed:', error.shortMessage ?? error.message))
