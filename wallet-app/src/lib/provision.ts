@@ -1,10 +1,10 @@
-import { bank } from "./api";
+import { bank, setToken, type ClientView } from "./api";
 import { wipe } from "./bytes";
 import { cardOf, newCardKey, sealPartC, type EncC, type PaperCard } from "./card";
-import { seal, type KeySource } from "./envelope";
-import { createKey, hexOf, signLocally, type KeyParts } from "./mpc";
-import { createPasskey, getPasskey } from "./passkey";
-import { backupFileOf, deviceLabel, partAAad, saveProfile, type BackupFile, type Profile } from "./profile";
+import { open, seal, type Envelope, type KeySource } from "./envelope";
+import { createKey, hexOf, publicKeyOfPart, signLocally, type KeyParts } from "./mpc";
+import { createPasskey, getPasskey, requirePrf } from "./passkey";
+import { backupFileOf, deviceId, deviceLabel, partAAad, saveProfile, type BackupFile, type Profile } from "./profile";
 import { addressesOf, finishSignature, personalMessageHash, signatureHex } from "./walletcore";
 
 // Registers a passkey with the bank (server-verified) and tries to obtain its PRF secret.
@@ -81,5 +81,34 @@ export async function provision(opts: { clientId: string; name: string; source: 
     return { profile, card: await cardOf(cardKey), backupFile: backupFileOf(profile) };
   } finally {
     wipe(cardKey, parts?.a, parts?.c);
+  }
+}
+
+// The wallet already exists and this device has its passkey (iCloud Keychain / Google Password
+// Manager sync it to the client's new phone): Face ID logs in to Swissquote and opens the
+// passkey-encrypted copy of Part A that Swissquote keeps. Nothing changes in the key, so this is
+// no recovery: it works like adding a device, with the synced passkey as the proof.
+export async function restoreWithPasskey(clientId: string, onStep?: (s: string) => void): Promise<{ profile: Profile; client: ClientView }> {
+  onStep?.("Signing in with your passkey…");
+  const options = await bank("/auth/passkey/options", "POST", { clientId });
+  const login = await getPasskey({ serverOptions: options });
+  const session = await bank<{ token: string; client: ClientView }>("/auth/passkey/verify", "POST", { clientId, deviceId: deviceId(), response: login.json });
+  setToken(session.token);
+  onStep?.("Opening your wallet's Part A…");
+  const backup = await bank<{ backupA: Envelope; publicKey: string; version: number; encC: EncC; walletAddress: string; name: string }>("/wallet/backup");
+  // Part A is locked with the passkey that created the wallet; ask for that one if another was used.
+  const pk = login.credentialId === backup.backupA.credentialId ? login : await getPasskey({ credentialIds: [backup.backupA.credentialId] });
+  const src: KeySource = { kind: "prf", prf: requirePrf(pk) };
+  const a = await open(src, backup.backupA, partAAad(clientId, backup.publicKey)).catch(() => {
+    throw new Error("This passkey can't open your wallet's Part A. Add this device from your other device, or recover your wallet.");
+  });
+  try {
+    const publicKey = await publicKeyOfPart(a);
+    if (hexOf(publicKey) !== backup.publicKey.toLowerCase()) throw new Error("This copy of Part A doesn't belong to your wallet. Aborted.");
+    const profile = await secureDevice({ clientId, name: backup.name, parts: { a, publicKey, version: backup.version }, encC: backup.encC, source: src, credentialId: pk.credentialId, uploadBackup: false });
+    if (profile.address.toLowerCase() !== backup.walletAddress.toLowerCase()) throw new Error("The restored wallet has a different address. Aborted.");
+    return { profile, client: session.client };
+  } finally {
+    wipe(a);
   }
 }

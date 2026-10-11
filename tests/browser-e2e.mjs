@@ -170,6 +170,15 @@ test("passkey with PRF: create, co-sign, add + remove a device, lose device, rec
   await button(page, "Back").first().click();
   await page.locator(".hero .addr").waitFor();
 
+  // A new device that has the wallet's synced passkey (here: same passkey, wallet data removed from
+  // this browser) signs in directly: client ID + Face ID, same wallet, no recovery.
+  await page.evaluate(() => localStorage.removeItem("sq.wallet.profile.mpc.v1"));
+  await page.reload();
+  await button(page, /already have a wallet/).click();
+  await page.locator('input[autocomplete="username webauthn"]').fill("SQ-100234");
+  await button(page, /^Sign in with/).click();
+  assert.equal(await homeAddress(page), address, "signed in with the synced passkey: same wallet");
+
   // Send: an empty wallet gets a clear message instead of a failed broadcast.
   await button(page, /Send/).first().click();
   await page.locator("input.f.mono").fill("0x000000000000000000000000000000000000dEaD");

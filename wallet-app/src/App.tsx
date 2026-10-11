@@ -10,11 +10,12 @@ import { Receive } from "./screens/Receive";
 import { Recover } from "./screens/Recover";
 import { Send } from "./screens/Send";
 import { Settings } from "./screens/Settings";
+import { SignIn } from "./screens/SignIn";
 import { Unlock } from "./screens/Unlock";
 import { Welcome } from "./screens/Welcome";
 import { TabBar, type Tab } from "./ui";
 
-type Route = "welcome" | "create" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings" | "apps";
+type Route = "welcome" | "create" | "signin" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings" | "apps";
 const WALLET_ROUTES: Route[] = ["home", "send", "receive", "settings", "apps"];
 
 export function App() {
@@ -56,6 +57,14 @@ export function App() {
     return () => window.removeEventListener(SESSION_EXPIRED, onExpired);
   }, []);
 
+  // Signed in with a synced passkey: already logged in to Swissquote, straight to the wallet.
+  const enterSignedIn = (p: Profile, c: ClientView) => {
+    setProfile(p);
+    setClient(c);
+    setNotice(null);
+    setRoute("home");
+  };
+
   const enter = (p: Profile) => {
     setProfile(p);
     setToken(null);
@@ -66,10 +75,13 @@ export function App() {
   let view;
   switch (route) {
     case "welcome":
-      view = <Welcome onCreate={() => setRoute("create")} onRecover={() => setRoute("recover")} />;
+      view = <Welcome onCreate={() => setRoute("create")} onSignIn={() => setRoute("signin")} onRecover={() => setRoute("recover")} />;
       break;
     case "create":
-      view = <Create onBack={() => setRoute("welcome")} onFinished={enter} />;
+      view = <Create onBack={() => setRoute("welcome")} onFinished={enter} onSignedIn={enterSignedIn} onRecover={() => setRoute("recover")} />;
+      break;
+    case "signin":
+      view = <SignIn onBack={() => setRoute("welcome")} onRecover={() => setRoute("recover")} onSignedIn={enterSignedIn} />;
       break;
     case "join":
       view = deviceLink && (

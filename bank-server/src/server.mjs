@@ -336,10 +336,22 @@ app.put("/api/wallet/backup", wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// The passkey-encrypted Part A (Swissquote can't open it) plus what the vault knows about the key:
+// a device that has the wallet's synced passkey restores the wallet without a recovery.
 app.get("/api/wallet/backup", wrap(async (req, res) => {
   const { client } = auth(req);
-  if (!client.backupA) throw fail(404, "Swissquote holds no passkey-encrypted backup of Part A for this wallet. Use your encrypted backup file or your paper Recovery Card.");
-  res.json({ backupA: client.backupA, walletAddress: client.wallet?.address });
+  if (!client.wallet?.activatedAt) throw fail(404, "This client has no Swissquote Wallet yet.");
+  if (!client.backupA) throw fail(404, "This wallet is protected with a wallet password, so Swissquote keeps no copy of Part A. Add this device from your other device (Profile → Devices → Add a device), or recover with your backup file or paper card.");
+  const ticket = signTicket({ purpose: "restore", clientId: client.id, exp: Date.now() + 60_000 });
+  const r = await fetch(`${VAULT_URL}/v1/keys/${encodeURIComponent(client.id)}/restore`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ticket }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => null);
+  if (!r?.ok) throw fail(503, "The Share Vault is unreachable. Try again in a moment.");
+  const key = await r.json();
+  res.json({ backupA: client.backupA, walletAddress: client.wallet.address, name: client.name, ...key });
 }));
 
 app.post("/api/wallet/activate", wrap(async (req, res) => {

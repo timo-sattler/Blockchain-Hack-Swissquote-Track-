@@ -118,6 +118,9 @@ Adding a phone to a wallet made on the computer at http://localhost:5173: run `n
 
 The QR code works once and for 10 minutes. Show it only to yourself.
 
+### Or: sign in directly with your synced passkey
+If the new device already has your passkey (an iPhone with the same Apple ID and iCloud Keychain, on the same web address), you don't need the QR code: on the start screen tap **I already have a wallet. Sign in**, enter your client ID and tap **Sign in with Face ID**. The wallet opens with the same address; nothing about the key changes. This works for wallets protected with Face ID; wallets protected with a wallet password need **Add a device**.
+
 ## 8. Remove a lost device
 
 On a device you still have: **Profile** → **Devices** → **Remove** next to the lost one. Swissquote stops accepting that device's passkey, so it can no longer approve any payment, and its copy of Part A is useless.
@@ -179,7 +182,7 @@ From a terminal: `npm run kyc -- approve` approves the latest waiting recovery.
 | "Passkeys need a secure page" | Use http://localhost:5173 on the computer, or the `npm run tunnel` https link on a phone. Not an IP address. |
 | The passkey prompt doesn't appear or is cancelled | Make sure Face ID / Touch ID / Windows Hello is set up. On a computer without it, pick "Use a phone or tablet" in the dialog. |
 | "No passkey for this client was created on …" | You opened a different address than the one the wallet was made on. Use the same address, or recover the wallet here. |
-| "You already have a Swissquote Wallet" | This client already has one. Use **Recover my wallet**, log in as the other client, or run `npm run reset`. |
+| "You already have a Swissquote Wallet" | Tap **Open it with Face ID** if this device has the wallet's passkey (same address, synced passkey). Otherwise **Add a device** from your other device, **Recover my wallet**, log in as the other client, or run `npm run reset`. |
 | Free transfer: "fee account is empty" | Send Sepolia ETH to the treasury address from `npm run status`. |
 | The terminal warns about "the earlier Shamir version" | Old demo data: stop, `npm run reset`, start again. |
 | "Port … is already in use" | The demo is already running in another terminal. Stop that one first. |

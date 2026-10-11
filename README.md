@@ -127,16 +127,6 @@ Passkeys need `http://localhost` or `https://`; an HTTP LAN IP address does not 
 
 With the demo running on reset data (`npm run reset`, then `npm run demo:fast`): `npm test` runs 15 end-to-end API tests (MPC key creation, Swissquote co-signing, screening, SMS for high values, gasless, dApp policy, devices, attacks on recovery, paper-card recovery with share refresh, the emergency tool), and `npm run test:browser` runs both passkey scenarios in Chrome. Both suites use the demo clients, so reset the data between them (stop, `npm run reset`, start).
 
-## Team
-
-| Person | Focus |
-|---|---|
-| Vincent | |
-| Maxi | |
-| Grace | |
-| Jeroen | |
-| Timo | |
-
 ## Workflow
 
 Never push directly to `main`: work on a branch (`<name>/<task>`), push it, open a pull request, one teammate reviews, merge. Keep secrets (private keys, API keys) in ignored environment files or shell variables; `.env.example` documents the optional settings. **Never commit real keys.**
