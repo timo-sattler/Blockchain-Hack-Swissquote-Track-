@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Swissquote eBanking (MOCK)</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="common.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">Swiss<span>quote</span> eBanking</div>
+    <span class="mock">MOCK BANK</span>
+    <div class="spacer"></div>
+    <nav><a href="/">Open Wallet app</a><a href="kyc.html">KYC operator</a><a href="outbox.html">SMS/E-mail outbox</a></nav>
+  </header>
+
+  <main id="login" class="login card" hidden>
+    <h2>Log in to eBanking</h2>
+    <form id="loginForm">
+      <label>Client ID</label><input id="clientId" value="SQ-100234" autocomplete="username" />
+      <label>Password</label><input id="password" type="password" value="Demo-1234" autocomplete="current-password" />
+      <button style="margin-top:14px;width:100%">Continue</button>
+    </form>
+    <form id="otpForm" hidden>
+      <p class="muted" id="otpHint"></p>
+      <label>SMS code</label><input id="otp" inputmode="numeric" maxlength="6" />
+      <button style="margin-top:14px;width:100%">Log in</button>
+    </form>
+    <div class="err" id="loginErr"></div>
+    <p class="muted">Demo clients: SQ-100234 / Demo-1234 (Anna Keller), SQ-100777 / Demo-5678 (Marco Rossi)</p>
+  </main>
+
+  <main id="dash" hidden>
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div><div class="big" id="who"></div><div class="muted" id="whoSub"></div></div>
+      <button class="secondary" id="logout">Log out</button>
+    </div>
+    <div id="alerts"></div>
+    <div class="grid">
+      <div class="card">
+        <h2>Swissquote accounts</h2>
+        <div class="muted">CHF current account</div><div class="big" id="chf"></div>
+        <div class="muted" style="margin-top:10px">ETH held by Swissquote (custodial, MOCK ledger)</div><div class="big" id="ethc"></div>
+      </div>
+      <div class="card">
+        <h2>Swissquote Wallet (self-custody) <span class="badge" id="netBadge"></span></h2>
+        <div id="walletBox" class="muted">No wallet yet. Open the Wallet app to create one.</div>
+      </div>
+      <div class="card" id="topupCard">
+        <h2>Move ETH to my Swissquote Wallet</h2>
+        <p class="muted">Sends real on-chain ETH from the bank treasury straight to your wallet. Only allowed to a wallet you've proven you own (Travel Rule).</p>
+        <div class="row"><input id="wAmt" value="0.002" style="flex:1" /><button id="wBtn">Send to my wallet</button></div>
+        <div class="err" id="wErr"></div>
+        <div class="muted" id="wOut"></div>
+      </div>
+    </div>
+
+    <div class="grid" style="margin-top:16px">
+      <div class="card">
+        <h2>Wallet recovery requests</h2>
+        <div id="recov" class="muted">None</div>
+      </div>
+      <div class="card">
+        <h2>Devices with a passkey</h2>
+        <div id="devices" class="muted">None</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Activity</h2>
+      <table><tbody id="activity"></tbody></table>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Demo: bank treasury hot wallet</h2>
+      <div class="muted" id="treasuryHint">Fund this address so bank→wallet transfers work.</div>
+      <div class="mono" id="treasury"></div>
+    </div>
+  </main>
+
+  <script>
+    const deviceId = localStorage.portalDevice || (localStorage.portalDevice = "portal-" + crypto.randomUUID());
+    let token = sessionStorage.portalToken;
+    let explorer = "https://sepolia.etherscan.io";
+    let topupEnabled = true;
+    const $ = (id) => document.getElementById(id);
+
+    function show() {
+      $("login").hidden = !!token;
+      $("dash").hidden = !token;
+      if (token) refresh();
+    }
+
+    $("loginForm").onsubmit = async (e) => {
+      e.preventDefault();
+      $("loginErr").textContent = "";
+      try {
+        const r = await api("/api/auth/login", { method: "POST", body: { clientId: $("clientId").value, password: $("password").value, deviceId } });
+        $("loginForm").hidden = true;
+        $("otpForm").hidden = false;
+        $("otpHint").innerHTML = r.mockDelivery.code
+          ? `We sent a code to ${esc(r.mockDelivery.to)}. <span class="mock">MOCK SMS: ${esc(r.mockDelivery.code)}</span>`
+          : "We sent you a code by SMS.";
+        $("otp").focus();
+      } catch (err) { $("loginErr").textContent = err.message; }
+    };
+    $("otpForm").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api("/api/auth/otp", { method: "POST", body: { clientId: $("clientId").value, deviceId, code: $("otp").value } });
+        token = sessionStorage.portalToken = r.token;
+        show();
+      } catch (err) { $("loginErr").textContent = err.message; }
+    };
+    $("logout").onclick = () => { token = null; sessionStorage.removeItem("portalToken"); location.reload(); };
+
+    async function refresh() {
+      let o;
+      try { o = await api("/api/bank/overview", { token }); }
+      catch (e) { if (/log in/i.test(e.message)) { token = null; sessionStorage.removeItem("portalToken"); show(); } return; }
+      explorer = o.explorer;
+      topupEnabled = o.treasury.topupEnabled !== false;
+      const c = o.client;
+      $("netBadge").textContent = o.network?.name || "Sepolia testnet";
+      $("topupCard").hidden = !topupEnabled;
+      $("treasuryHint").textContent = o.network?.testnet === false
+        ? "Ethereum mainnet: top-ups pay out real ETH" + (topupEnabled ? "." : " and are switched off (TREASURY_TOPUP=1 enables them).")
+        : "Fund this address from a Sepolia faucet so bank→wallet transfers work.";
+      $("who").textContent = c.name;
+      $("whoSub").textContent = `Client ${c.id} · ${c.emailMasked} · ${c.phoneMasked}`;
+      $("chf").textContent = `CHF ${c.accounts.chf.toLocaleString("de-CH", { minimumFractionDigits: 2 })}`;
+      $("ethc").textContent = `${c.accounts.ethCustody} ETH`;
+      $("treasury").innerHTML = `${esc(o.treasury.address)} — balance ${esc(o.treasury.balance ?? "?")} ETH · <a target="_blank" href="${explorer}/address/${o.treasury.address}">Explorer</a>`;
+
+      if (c.wallet) {
+        const tr = c.wallet.travelRule;
+        $("walletBox").innerHTML = `
+          <div class="mono">${esc(c.wallet.address)}</div>
+          <div class="big" style="margin:8px 0">${esc(o.walletBalance ?? "?")} ETH</div>
+          <div class="row"><span class="badge ok">✓ Ownership verified</span><span class="badge">${c.wallet.activatedAt ? "Active" : "Setting up"}</span></div>
+          <p class="muted">Travel Rule: self-hosted wallet, ownership proven by ${esc(tr.method)} on ${when(tr.verifiedAt)}.
+          Swissquote holds 1 of the key's 3 MPC parts: it co-signs screened payments and <b>cannot move these funds</b> alone.</p>
+          <a target="_blank" href="${explorer}/address/${c.wallet.address}">View on the explorer</a>`;
+      }
+
+      const rec = o.recoveries;
+      $("recov").innerHTML = rec.length ? rec.map((r) => `
+        <div class="alert ${["pending_kyc","timelock"].includes(r.status) ? "bad" : ""}">
+          <b>${esc(r.deviceLabel)}</b> · ${when(r.createdAt)} · path: ${r.path === "paper" ? "paper Recovery Card" : r.path === "file" ? "backup file" : "passkey"}<br/>
+          Status: <span class="badge ${statusClass(r.status)}">${esc(r.status)}</span>
+          ${r.status === "timelock" ? ` · Swissquote's vault takes part in ${r.secondsLeft}s` : ""}
+          ${["pending_kyc","timelock"].includes(r.status) ? `<div style="margin-top:8px"><button class="danger" onclick="cancelRec('${r.id}')">This wasn't me. Cancel and freeze</button></div>` : ""}
+        </div>`).join("") : "None";
+
+      $("devices").innerHTML = c.credentials.length ? c.credentials.map((k) => `
+        <div class="row" style="justify-content:space-between;border-bottom:1px solid var(--line);padding:6px 0">
+          <div><b>${esc(k.deviceLabel)}</b><div class="muted">added ${when(k.createdAt)}${k.lastUsedAt ? " · last used " + when(k.lastUsedAt) : ""}</div></div>
+          ${k.revoked ? `<span class="badge bad">revoked</span>` : `<button class="secondary" onclick="reportLost('${k.id}')">Report lost</button>`}
+        </div>`).join("") : "None";
+
+      $("alerts").innerHTML = o.notifications.filter((n) => n.actionable && Date.now() - Date.parse(n.at) < 3600e3).slice(0, 3)
+        .map((n) => `<div class="alert bad"><b>${esc(n.title)}</b><br/>${esc(n.body)}</div>`).join("");
+
+      $("activity").innerHTML = o.activity.map((a) => `<tr><td class="muted">${when(a.at)}</td><td>${esc(a.type)}</td><td>${describe(a)}</td></tr>`).join("");
+    }
+    function statusClass(s) { return { completed: "ok", rejected: "bad", cancelled: "bad", expired: "", abandoned: "", pending_kyc: "warn", timelock: "warn", released: "warn" }[s] || ""; }
+    function describe(a) {
+      if (a.hash) return `${a.eth} ETH → <span class="mono">${esc(short(a.to))}</span> <a target="_blank" href="${a.explorer}">tx</a>${a.tier ? ` <span class="badge">${esc(a.tier)}</span>` : ""}${a.depositCredited ? ' <span class="badge ok">credited</span>' : a.depositPending ? ' <span class="badge warn">pending</span>' : a.depositFailed ? ' <span class="badge bad">not credited</span>' : ""}`;
+      return esc(a.method || a.device || a.address || a.recoveryId || "");
+    }
+    window.cancelRec = async (id) => { await api(`/api/recovery/${id}/cancel`, { method: "POST", token }).catch((e) => alert(e.message)); refresh(); };
+    window.reportLost = async (id) => { if (confirm("Revoke this device's passkey?")) { await api(`/api/devices/${encodeURIComponent(id)}/report-lost`, { method: "POST", token }).catch((e) => alert(e.message)); refresh(); } };
+    $("wBtn").onclick = async () => {
+      $("wErr").textContent = ""; $("wOut").textContent = ""; $("wBtn").disabled = true;
+      try {
+        const r = await api("/api/bank/withdraw", { method: "POST", token, body: { amountEth: $("wAmt").value } });
+        $("wOut").innerHTML = `Sent! <a target="_blank" href="${r.explorer}">${esc(short(r.hash))}</a>`;
+        refresh();
+      } catch (e) { $("wErr").textContent = e.message; }
+      $("wBtn").disabled = false;
+    };
+    setInterval(() => token && refresh(), 5000);
+    show();
+  </script>
+</body>
+</html>

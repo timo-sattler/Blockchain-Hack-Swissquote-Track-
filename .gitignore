@@ -5,7 +5,6 @@
 
 # Node
 node_modules/
-.next/
 dist/
 build/
 *.tsbuildinfo
@@ -18,5 +17,6 @@ build/
 # Reference screenshots of the real Swissquote app (may contain personal data)
 pitch/swissquote-app/
 
-# Demo logs (scripts/start-demo.sh)
-.demo-logs/
+# Demo runtime data: client records, key shares, treasury private key
+bank-server/data/
+share-vault/data/

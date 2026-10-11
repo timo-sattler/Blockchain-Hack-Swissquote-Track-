@@ -1,0 +1,14 @@
+{
+  "name": "share-vault",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MOCK Swissquote key-share vault (Share B holder). Separate process, separate storage.",
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "@silencelaboratories/dkls-wasm-ll-node": "^1.2.0",
+    "express": "^4.21.2"
+  }
+}

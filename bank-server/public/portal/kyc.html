@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KYC operator console (MOCK video-ident)</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="common.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">Swiss<span>quote</span> Identity Desk</div>
+    <span class="mock">MOCK VIDEO-IDENT PROVIDER</span>
+    <div class="spacer"></div>
+    <nav><a href="index.html">eBanking</a><a href="outbox.html">Outbox</a></nav>
+  </header>
+  <main id="login" class="login card">
+    <h2>Operator login</h2>
+    <p class="muted">Stands in for a licensed video-identification provider (FINMA Circular 2016/7). Demo PIN: <b>kyc-demo</b></p>
+    <input id="pin" type="password" value="kyc-demo" />
+    <button id="go" style="margin-top:10px">Log in</button>
+    <div class="err" id="err"></div>
+  </main>
+  <main id="desk" hidden>
+    <p class="muted">Compare the live selfie with the photo on file from account opening. Approving starts the security delay. The client can still cancel during it.</p>
+    <div id="list"></div>
+    <div class="card" style="margin-top:16px">
+      <h2>Share Vault audit log (separate process)</h2>
+      <table><tbody id="audit"></tbody></table>
+    </div>
+  </main>
+  <script>
+    let token = sessionStorage.opToken;
+    const $ = (id) => document.getElementById(id);
+    $("go").onclick = async () => {
+      try { token = sessionStorage.opToken = (await api("/api/operator/login", { method: "POST", body: { pin: $("pin").value } })).token; start(); }
+      catch (e) { $("err").textContent = e.message; }
+    };
+    function start() { $("login").hidden = true; $("desk").hidden = false; load(); setInterval(load, 4000); }
+    async function load() {
+      let r;
+      try { r = await api("/api/operator/recoveries", { token }); } catch { sessionStorage.removeItem("opToken"); location.reload(); return; }
+      $("list").innerHTML = r.recoveries.map((x) => `
+        <div class="card" style="margin-bottom:12px">
+          <div class="row" style="justify-content:space-between">
+            <div><b>${esc(x.clientName)}</b> (${esc(x.clientId)}) · ${esc(x.deviceLabel)} · ${when(x.createdAt)} · IP ${esc(x.ip)}</div>
+            <span class="badge ${x.status === "pending_kyc" ? "warn" : x.status === "completed" ? "ok" : x.status === "rejected" || x.status === "cancelled" ? "bad" : ""}">${esc(x.status)}</span>
+          </div>
+          <div class="row" style="margin-top:10px;gap:24px">
+            <div><div class="muted">Photo on file (onboarding)</div>${x.kycPhoto ? `<img class="face" src="${esc(x.kycPhoto)}">` : `<div class="face muted" style="display:flex;align-items:center;justify-content:center">none</div>`}${sourceBadge(x.kycPhotoSource)}</div>
+            <div><div class="muted">Selfie (recovery)</div><img class="face" src="${esc(x.selfie)}">${sourceBadge(x.selfieSource)}</div>
+            <div style="flex:1">
+              <p class="muted">Recovery path: Swissquote's Part B + ${x.path === "paper" ? "paper Recovery Card (Part C)" : x.path === "file" ? "backup file (Part A)" : "synced passkey (Part A)"}. Approving lets the vault refresh all key parts with this device after the security delay.</p>
+              ${x.status === "pending_kyc" ? `
+                <div class="row">
+                  <button class="ok" onclick="decide('${x.id}','approve')">✓ Same person, approve</button>
+                  <button class="danger" onclick="decide('${x.id}','reject')">✗ Mismatch, reject</button>
+                </div>` : x.kycDecision ? `<p>Decision: <b>${esc(x.kycDecision.decision)}</b> ${when(x.kycDecision.at)}</p>` : ""}
+              ${x.status === "timelock" ? `<p>Security delay: ${x.secondsLeft}s left</p>` : ""}
+              ${x.frozenUntil > Date.now() ? `<p><span class="badge bad">recovery frozen</span> <button class="secondary" onclick="unfreeze('${x.clientId}')">Lift freeze (after call-back)</button></p>` : ""}
+            </div>
+          </div>
+        </div>`).join("") || `<p class="muted">No recovery requests.</p>`;
+      const a = await api("/api/operator/vault-audit", { token });
+      $("audit").innerHTML = (a.audit || []).map((e) => `<tr><td class="muted">${when(e.at)}</td><td>${esc(e.event)}</td><td>${esc(e.clientId || "")}</td><td class="muted">${esc(e.reason || e.walletAddress || e.recoveryId || e.until || "")}</td></tr>`).join("");
+    }
+    function sourceBadge(s) {
+      if (s === "camera") return `<div><span class="badge ok">live camera</span></div>`;
+      if (s === "upload") return `<div><span class="badge warn">uploaded file, not live</span></div>`;
+      return "";
+    }
+    window.decide = async (id, decision) => { await api(`/api/operator/recoveries/${id}/decision`, { method: "POST", token, body: { decision } }).catch((e) => alert(e.message)); load(); };
+    window.unfreeze = async (cid) => { await api(`/api/operator/clients/${cid}/unfreeze`, { method: "POST", token }).catch((e) => alert(e.message)); load(); };
+    if (token) start();
+  </script>
+</body>
+</html>

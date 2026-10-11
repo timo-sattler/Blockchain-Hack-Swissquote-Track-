@@ -1,0 +1,29 @@
+{
+  "name": "swissquote-wallet",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Swissquote self-custody wallet: Trust Wallet Core transactions, 2-of-3 MPC key (DKLs23) with passkeys, gasless USDC/EURC, Ethereum Sepolia",
+  "workspaces": [
+    "share-vault",
+    "bank-server",
+    "wallet-app"
+  ],
+  "scripts": {
+    "vault": "npm run start -w share-vault",
+    "bank": "npm run start -w bank-server",
+    "app": "npm run dev -w wallet-app",
+    "demo": "concurrently -k -n vault,bank,app -c magenta,blue,green \"npm run vault\" \"npm run bank\" \"npm run app\"",
+    "demo:fast": "node scripts/demo-fast.mjs",
+    "tunnel": "npx --yes cloudflared tunnel --protocol http2 --url http://localhost:5173",
+    "test": "node --test --test-reporter=spec tests/e2e-api.test.mjs",
+    "test:browser": "node --test --test-reporter=spec tests/browser-e2e.mjs",
+    "kyc": "node scripts/kyc-decide.mjs",
+    "reset": "node scripts/reset-data.mjs",
+    "recover-offline": "node tools/emergency-recover.mjs",
+    "status": "node scripts/status.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "playwright-core": "^1.49.1"
+  }
+}
