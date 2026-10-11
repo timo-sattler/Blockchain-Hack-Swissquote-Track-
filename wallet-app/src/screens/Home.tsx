@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { bank, cachedConfig, config, type ClientView, type PublicConfig } from "../lib/api";
 import { balance, formatEth, formatUnits, history, tokenBalance, tokenHistory, type ChainTx, type TokenTx } from "../lib/eth";
-import type { Profile } from "../lib/profile";
-import { BankIcon, ProfileIcon, ReceiveIcon, SendIcon } from "../icons";
-import { Banner, Btn, Top, short, useAsync, useCopy } from "../ui";
+import { keyModeOf, type Profile } from "../lib/profile";
+import { authName } from "../lib/passkey";
+import { AppsIcon, BankIcon, ChevronIcon, ProfileIcon, ReceiveIcon, SendIcon } from "../icons";
+import { Banner, Btn, SubNav, Top, short, useAsync, useCopy } from "../ui";
 
 interface Notification {
   id: string;
@@ -34,7 +35,13 @@ interface Row {
   status: "ok" | "failed" | "pending";
 }
 
-export function Home({ profile, client, go }: { profile: Profile; client: ClientView | null; go: (r: "send" | "receive" | "settings") => void }) {
+type Section = "portfolio" | "activity" | "security";
+
+const TOKEN_NAMES: Record<string, string> = { ETH: "Ether", USDC: "USD Coin", EURC: "Euro Coin", WETH: "Wrapped Ether" };
+const TOKEN_COLORS: Record<string, string> = { ETH: "#627eea", USDC: "#2775ca", EURC: "#3b6fd8", WETH: "#8a5cf6" };
+const TOKEN_GLYPHS: Record<string, string> = { ETH: "Ξ", USDC: "$", EURC: "€", WETH: "W" };
+
+export function Home({ profile, client, go }: { profile: Profile; client: ClientView | null; go: (r: "send" | "receive" | "settings" | "apps") => void }) {
   const [bal, setBal] = useState<bigint | null>(null);
   const [balErr, setBalErr] = useState(false);
   const [cfg, setCfg] = useState<PublicConfig>(cachedConfig());
@@ -43,10 +50,13 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
   const [chainTxs, setChainTxs] = useState<ChainTx[] | null>(null);
   const [tokenTxs, setTokenTxs] = useState<TokenTx[]>([]);
   const [tokenBals, setTokenBals] = useState<Record<string, bigint | null>>({});
+  const [wethBal, setWethBal] = useState<bigint | null>(null);
   const [custody, setCustody] = useState<number | null>(client?.accounts.ethCustody ?? null);
   const [recoveries, setRecoveries] = useState<{ id: string; status: string; deviceLabel: string; secondsLeft: number | null }[]>([]);
   const [topUp, setTopUp] = useState("0.002");
   const [topUpMsg, setTopUpMsg] = useState<string | null>(null);
+  const [section, setSection] = useState<Section>("portfolio");
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [copied, copy] = useCopy();
   const { busy, error, run } = useAsync();
   const me = profile.address.toLowerCase();
@@ -56,6 +66,7 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
       .then((b) => {
         setBal(b);
         setBalErr(false);
+        setUpdatedAt(new Date());
       })
       .catch(() => setBalErr(true));
     for (const [sym, t] of Object.entries(cachedConfig().tokens)) {
@@ -63,6 +74,11 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
         .then((b) => setTokenBals((prev) => ({ ...prev, [sym]: b })))
         .catch(() => {});
     }
+    const weth = cachedConfig().dapps.find((d) => d.kind === "weth");
+    if (weth)
+      tokenBalance(weth.address, profile.address)
+        .then(setWethBal)
+        .catch(() => {});
     if (!client) return;
     bank("/bank/overview")
       .then((o) => {
@@ -110,7 +126,13 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
       refresh();
     });
 
-  const pending = recoveries.filter((r) => r.status === "pending_kyc" || r.status === "timelock");
+  const discardRecovery = (id: string) =>
+    run(async () => {
+      await bank(`/recovery/${id}/abandon`, "POST");
+      refresh();
+    });
+
+  const pending = recoveries.filter((r) => ["pending_kyc", "timelock", "released"].includes(r.status));
   const chf = bal !== null ? (Number(formatEth(bal, 8)) * cfg.ethChf).toFixed(2) : null;
   const treasury = cfg.treasuryAddress?.toLowerCase();
 
@@ -162,6 +184,18 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
   }
   rows.sort((x, y) => (y.at || "9").localeCompare(x.at || "9"));
 
+  const assets = [
+    { sym: "ETH", amount: bal === null ? null : formatEth(bal), chf: chf },
+    ...Object.entries(cfg.tokens).map(([sym, t]) => {
+      const b = tokenBals[sym];
+      return { sym, amount: b == null ? null : formatUnits(b, t.decimals, 2), chf: b == null ? null : (Number(formatUnits(b, t.decimals, 6)) * t.chf).toFixed(2) };
+    }),
+    // WETH (from Apps) is listed once the wallet holds some.
+    ...(wethBal ? [{ sym: "WETH", amount: formatEth(wethBal), chf: (Number(formatEth(wethBal, 8)) * cfg.ethChf).toFixed(2) }] : []),
+  ];
+  const totalChf = assets.every((a) => a.chf !== null) ? assets.reduce((n, a) => n + Number(a.chf), 0) : null;
+  const fmtChf = (n: number) => n.toLocaleString("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   return (
     <>
       <Top
@@ -171,13 +205,26 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
           </button>
         }
       />
-      <div className="content wide">
+      <SubNav<Section>
+        items={[
+          ["portfolio", "Portfolio"],
+          ["activity", "Activity"],
+          ["security", "Security"],
+        ]}
+        active={section}
+        onChange={setSection}
+      />
+      <div className="content">
         {pending.map((r) => (
           <Banner kind="bad" key={r.id}>
-            <b>⚠️ Someone is trying to recover your wallet</b> from "{r.deviceLabel}" ({r.status === "pending_kyc" ? "identity check pending" : `releases in ${r.secondsLeft}s`}).
-            <div style={{ marginTop: 8 }}>
+            <b>⚠️ Someone is trying to recover your wallet</b> from "{r.deviceLabel}" (
+            {r.status === "pending_kyc" ? "identity check pending" : r.status === "timelock" ? `releases in ${r.secondsLeft}s` : "Swissquote's part released, not finished yet"}).
+            <div className="stack" style={{ marginTop: 8 }}>
               <Btn kind="danger" onClick={() => cancelRecovery(r.id)} busy={busy}>
                 That wasn't me. Block it
+              </Btn>
+              <Btn kind="link" onClick={() => discardRecovery(r.id)} busy={busy}>
+                It was me, discard it
               </Btn>
             </div>
           </Banner>
@@ -187,25 +234,16 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
         )}
         {!cfg.network.testnet && <Banner kind="warn">⚠️ Ethereum mainnet: this wallet holds real ETH. Transactions can't be reversed.</Banner>}
 
-        <div className="home-grid">
-          <div className="col">
+        {section === "portfolio" && (
+          <>
             <div className="hero">
-              <div className="label">Swissquote Wallet · {cfg.network.name}</div>
-              <div className="amount">{bal === null ? (balErr ? "—" : "…") : formatEth(bal)} ETH</div>
-              <div className="sub">{balErr && bal === null ? "Balance unavailable (network unreachable)" : chf ? `≈ CHF ${chf}` : " "}</div>
-              {Object.keys(cfg.tokens).length > 0 && (
-                <div className="row wrap" style={{ marginTop: 6 }}>
-                  {Object.entries(cfg.tokens).map(([sym, t]) => (
-                    <span className="badge" key={sym}>
-                      {tokenBals[sym] == null ? "…" : formatUnits(tokenBals[sym]!, t.decimals, 2)} {sym}
-                    </span>
-                  ))}
-                </div>
-              )}
+              <div className="label">Total value · {cfg.network.name}</div>
+              <div className="amount">{totalChf === null ? (balErr ? "—" : "…") : fmtChf(totalChf)} <small>CHF</small></div>
+              <div className="sub">{balErr && bal === null ? "Balance unavailable (network unreachable)" : `${bal === null ? "…" : formatEth(bal)} ETH`}</div>
               <div className="row wrap" style={{ marginTop: 10 }}>
                 <span className="badge ok">✓ Your keys · MPC 2 of 3</span>
-                <span className="badge">{profile.clientId}</span>
                 {client?.wallet?.travelRule && <span className="badge ok">Travel Rule ✓</span>}
+                <span className="badge">{profile.clientId}</span>
               </div>
               <button className="addr" onClick={() => copy(profile.address)} title="Copy address">
                 {profile.address} {copied ? "✓ copied" : "⧉"}
@@ -225,6 +263,12 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
                 </span>
                 Receive
               </button>
+              <button className="action" onClick={() => go("apps")}>
+                <span className="ico">
+                  <AppsIcon />
+                </span>
+                Apps
+              </button>
               <a className="action" href="/portal/" target="_blank" rel="noreferrer">
                 <span className="ico">
                   <BankIcon />
@@ -232,6 +276,30 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
                 eBanking
               </a>
             </div>
+
+            <div className="card list">
+              <div className="section-head">
+                <h3>Assets</h3>
+                <button className="link" onClick={() => go("receive")}>
+                  Receive
+                </button>
+              </div>
+              {assets.map((a) => (
+                <button className="asset-row" key={a.sym} onClick={() => go("send")} aria-label={`Send ${a.sym}`}>
+                  <span className="tok" style={{ background: TOKEN_COLORS[a.sym] || "var(--surface-3)" }}>
+                    {TOKEN_GLYPHS[a.sym] || a.sym[0]}
+                  </span>
+                  <span className="name">
+                    <b>{a.sym}</b>
+                    <span>{TOKEN_NAMES[a.sym] || a.sym}</span>
+                  </span>
+                  <span className="qty">{a.amount ?? "…"}</span>
+                  <span className="pill">{a.chf === null ? "…" : `${fmtChf(Number(a.chf))} CHF`}</span>
+                  <ChevronIcon />
+                </button>
+              ))}
+            </div>
+            {updatedAt && <p className="updated">Updated: {updatedAt.toLocaleTimeString("de-CH")}</p>}
 
             {bal === 0n && cfg.network.testnet && (
               <Banner kind="info">
@@ -291,52 +359,71 @@ export function Home({ profile, client, go }: { profile: Profile; client: Client
                 {error && <div className="err small">{error}</div>}
               </div>
             )}
-          </div>
+          </>
+        )}
 
-          <div className="col">
-            <div className="card">
+        {section === "activity" && (
+          <div className="card list">
+            <div className="section-head">
               <h3>Transactions</h3>
-              {rows.length === 0 && <p className="muted small">{chainTxs === null && !client ? "Loading…" : "No transactions yet."}</p>}
-              {rows.slice(0, 10).map((r) => (
-                <div className="list-item" key={r.hash}>
-                  <div>
-                    <div>{r.label}</div>
-                    <div className="muted small">
-                      {r.at ? new Date(r.at).toLocaleString("de-CH") : "just now"}
-                      {r.status === "pending" && <span className="badge warn"> pending</span>}
-                      {r.status === "failed" && <span className="badge bad"> failed</span>}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", whiteSpace: "nowrap" }}>
-                    <div className={r.incoming ? "in" : ""}>{r.amount}</div>
-                    <a className="small" href={`${cfg.explorer}/tx/${r.hash}`} target="_blank" rel="noreferrer">
-                      Explorer
-                    </a>
-                  </div>
-                </div>
-              ))}
-              <a className="small" href={`${cfg.explorer}/address/${profile.address}`} target="_blank" rel="noreferrer">
-                Full history on the explorer ↗
+              <a className="link" href={`${cfg.explorer}/address/${profile.address}`} target="_blank" rel="noreferrer">
+                Explorer ↗
               </a>
             </div>
-
-            {client && notes.length > 0 && (
-              <div className="card">
-                <h3>Security notifications</h3>
-                {notes.slice(0, 4).map((n) => (
-                  <div className="list-item" key={n.id}>
-                    <div>
-                      <div>
-                        <b>{n.title}</b>
-                      </div>
-                      <div className="muted small">{n.body}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+            {rows.length === 0 && <p className="muted small pad">{chainTxs === null && !client ? "Loading…" : "No transactions yet."}</p>}
+            {rows.slice(0, 20).map((r) => (
+              <a className="asset-row" key={r.hash} href={`${cfg.explorer}/tx/${r.hash}`} target="_blank" rel="noreferrer">
+                <span className="name">
+                  <b>{r.label}</b>
+                  <span>{r.at ? new Date(r.at).toLocaleString("de-CH") : "just now"}</span>
+                </span>
+                <span className={`pill ${r.status === "pending" ? "warn" : r.status === "failed" ? "bad" : r.incoming ? "up" : "down"}`}>
+                  {r.status === "failed" ? "failed" : r.amount}
+                </span>
+                <ChevronIcon />
+              </a>
+            ))}
           </div>
-        </div>
+        )}
+
+        {section === "security" && (
+          <>
+            <div className="card">
+              <h3>Your key</h3>
+              <div className="kv">
+                <span className="k">Custody</span>
+                <span>Self-custody · MPC 2 of 3</span>
+                <span className="k">Part A</span>
+                <span>On this device, unlocked by {keyModeOf(profile) === "password" ? "your wallet password" : authName()}</span>
+                <span className="k">Part B</span>
+                <span>Swissquote share vault (co-signs after screening)</span>
+                <span className="k">Part C</span>
+                <span>Locked by your paper Recovery Card</span>
+                <span className="k">Travel Rule</span>
+                <span>{client?.wallet?.travelRule ? "Ownership proven ✓" : "—"}</span>
+                <span className="k">Client</span>
+                <span>{profile.clientId}</span>
+              </div>
+              <Btn kind="secondary" onClick={() => go("settings")}>
+                Devices, backup and recovery
+              </Btn>
+            </div>
+            <div className="card list">
+              <div className="section-head">
+                <h3>Security notifications</h3>
+              </div>
+              {(!client || notes.length === 0) && <p className="muted small pad">{client ? "Nothing new." : "Available when Swissquote is reachable."}</p>}
+              {notes.slice(0, 8).map((n) => (
+                <div className="asset-row static" key={n.id}>
+                  <span className="name">
+                    <b>{n.title}</b>
+                    <span className="wrap">{n.body}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

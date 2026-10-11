@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="600" viewBox="0 0 760 600" font-family="Hind, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <g stroke="#9a9a9a" stroke-width="2" stroke-dasharray="7 7" fill="none">
+    <line x1="380" y1="150" x2="190" y2="345"/>
+    <line x1="380" y1="150" x2="570" y2="345"/>
+    <line x1="190" y1="370" x2="570" y2="370"/>
+  </g>
+  <!-- Part A: you -->
+  <circle cx="380" cy="120" r="88" fill="#3d3d3d" stroke="#e6e6e6" stroke-width="2.5"/>
+  <text x="380" y="98" text-anchor="middle" fill="#bdbdbd" font-size="17">Part A</text>
+  <text x="380" y="126" text-anchor="middle" fill="#fff" font-size="25" font-weight="700">You</text>
+  <text x="380" y="152" text-anchor="middle" fill="#d6d6d6" font-size="15">phone · Face ID</text>
+  <!-- Part B: Swissquote -->
+  <circle cx="170" cy="370" r="88" fill="#3d3d3d" stroke="#f05a2a" stroke-width="2.5"/>
+  <text x="170" y="348" text-anchor="middle" fill="#f6a083" font-size="17">Part B</text>
+  <text x="170" y="376" text-anchor="middle" fill="#f05a2a" font-size="24" font-weight="700">Swissquote</text>
+  <text x="170" y="402" text-anchor="middle" fill="#d6d6d6" font-size="15">screens · co-signs</text>
+  <!-- Part C: recovery card -->
+  <circle cx="590" cy="370" r="88" fill="#3d3d3d" stroke="#e6e6e6" stroke-width="2.5"/>
+  <text x="590" y="340" text-anchor="middle" fill="#bdbdbd" font-size="17">Part C</text>
+  <text x="590" y="368" text-anchor="middle" fill="#fff" font-size="23" font-weight="700">Recovery</text>
+  <text x="590" y="394" text-anchor="middle" fill="#fff" font-size="23" font-weight="700">Card</text>
+  <text x="590" y="420" text-anchor="middle" fill="#d6d6d6" font-size="15">24 words</text>
+  <text x="590" y="488" text-anchor="middle" fill="#bdbdbd" font-size="15">keep it, or give it to</text>
+  <text x="590" y="508" text-anchor="middle" fill="#bdbdbd" font-size="15">someone you trust</text>
+  <text x="380" y="566" text-anchor="middle" fill="#fff" font-size="19" font-weight="600">Any 2 of 3 parts can sign.</text>
+  <text x="380" y="590" text-anchor="middle" fill="#bdbdbd" font-size="16">One part alone is useless, and the full key never exists.</text>
+</svg>

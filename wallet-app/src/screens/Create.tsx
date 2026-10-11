@@ -3,7 +3,7 @@ import { bank, type ClientView } from "../lib/api";
 import type { KeySource } from "../lib/envelope";
 import { authName } from "../lib/passkey";
 import type { Profile } from "../lib/profile";
-import { provision, type ProvisionResult } from "../lib/provision";
+import { provision, restoreWithPasskey, type ProvisionResult } from "../lib/provision";
 import { ProtectDevice } from "../components/ProtectDevice";
 import { RecoveryCardView } from "../components/RecoveryCard";
 import { Banner, Btn, CameraCapture, Steps, Top, useAsync, type Photo } from "../ui";
@@ -11,7 +11,7 @@ import { BankLogin } from "./BankLogin";
 
 type Step = "login" | "identity" | "protect" | "card" | "done";
 
-export function Create({ onBack, onFinished }: { onBack: () => void; onFinished: (p: Profile) => void }) {
+export function Create({ onBack, onFinished, onSignedIn, onRecover }: { onBack: () => void; onFinished: (p: Profile) => void; onSignedIn: (p: Profile, c: ClientView) => void; onRecover: () => void }) {
   const [step, setStep] = useState<Step>("login");
   const [client, setClient] = useState<ClientView | null>(null);
   const [photo, setPhoto] = useState<Photo | null>(null);
@@ -120,8 +120,28 @@ export function Create({ onBack, onFinished }: { onBack: () => void; onFinished:
           ) : (
             <>
               <h1 className="center">You already have a Swissquote Wallet</h1>
-              <p className="muted center">Use "Recover my wallet" to restore it on this device.</p>
-              <Btn onClick={onBack}>Back</Btn>
+              <p className="muted center">
+                Open it here with {authName()} if your passkey is on this device (synced by iCloud Keychain or Google Password Manager). Otherwise add this
+                device from your other device (Profile → Devices → Add a device), or recover your wallet.
+              </p>
+              <Btn
+                onClick={() =>
+                  run(async () => {
+                    const r = await restoreWithPasskey(client!.id);
+                    onSignedIn(r.profile, r.client);
+                  })
+                }
+                busy={busy}
+              >
+                Open it with {authName()}
+              </Btn>
+              {error && <Banner kind="bad">{error}</Banner>}
+              <Btn kind="secondary" onClick={onRecover}>
+                I lost my device. Recover my wallet
+              </Btn>
+              <Btn kind="link" onClick={onBack}>
+                Back
+              </Btn>
             </>
           )}
         </div>

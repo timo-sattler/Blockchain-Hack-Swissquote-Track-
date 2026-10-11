@@ -1,80 +1,64 @@
-# Custody model: one key, two parts
+# Custody model: one key, three parts, any two sign
 
-> Who holds which part, what each party can and cannot do, and how we prove it. Plain-language version: [`handbook.md`](handbook.md).
+**Decision: a 2-of-3 MPC key (threshold ECDSA), with Swissquote as one of the three holders.** The client keeps two parts (one on their devices, one locked by a paper card they keep or give to someone they trust). Swissquote keeps the third, in a separate share vault, with a copy at an independent notary.
 
-## The decision
+## Who holds what
 
-| Part | Who holds it | Unlocked by |
-|---|---|---|
-| **A: the client's part** | The client's laptop, with **identical copies** on their other devices (phone, second laptop) | Each device's own passkey (Face ID / Touch ID / fingerprint) |
-| **B: Swissquote's part** | Swissquote's share service (separate process, own storage) | Swissquote's policy: passkey login, screening, limits |
-| *Copy of B* | Independent escrow agent (a notary in production; a mock process here) | Released only after the grace period |
+| Part | Held by | Protected by | Used for |
+|---|---|---|---|
+| **A** | The client's devices (identical copies on phone and laptop) | AES-256-GCM, key derived from the device's passkey (Face ID, WebAuthn PRF), or from a wallet password (PBKDF2, 600,000 rounds) where the passkey can't | Every payment, together with B |
+| **B** | Swissquote's share vault, a separate service with its own storage. A copy sits with an independent notary | Vault access control; production: an HSM or secure enclave | Co-signs only the exact transaction Swissquote approved |
+| **C** | Encrypted under the client's **paper Recovery Card** (24 words). The ciphertext is stored by the vault, the notary, each device and the backup file | AES-256-GCM, key derived from the 24 words (HKDF-SHA256) | Recovery, and paying without Swissquote (A + C) |
 
-The key is created with **two-party threshold ECDSA** (Silence Labs Silent Shard, DKLs23, 2-of-2). Every signature is computed jointly from both parts; the full private key is never assembled, not even for a moment. One public key gives a Bitcoin address and an EVM address.
+The key is created with DKLs23 (Silence Laboratories): the client's device and the vault run a distributed key generation; the full private key never exists, not during creation, not when signing, not during recovery. Every signature is an ordinary ECDSA signature on secp256k1, so the same key works for Ethereum and every EVM chain **and for Bitcoin** (the app already derives the Bitcoin address; sending Bitcoin needs only Bitcoin transaction building, the MPC signing is the same).
 
-**Why two parts.** Every payment then needs Swissquote's part, so Swissquote's screening and its fee sponsoring apply to every payment and cannot be skipped by the client's own devices. The client's devices hold identical copies of one part, so adding a phone never creates a second signing path without Swissquote.
+## Why this model
 
-## Alternatives we considered
-
-| Design | Why not |
+| Considered | Verdict |
 |---|---|
-| **2-of-3** (device, Swissquote, a recovery kit the client keeps) | Device + kit can sign without Swissquote, so screening and sponsoring become optional. Built and tested on branch `grace/mpc-docs` |
-| **Smart-contract account** (ERC-4337, passkey + guardians) | Recovery rules on-chain, but EVM only (no Bitcoin) and a contract per network. Built and tested on branch `grace/recovery-multicoin` |
-| **Swissquote holds the key** | Custody, with a bank's capital and segregation duties, and the client's control gone |
+| **Custodial account** | Not a wallet: Swissquote moves the funds, with the full capital and segregation burden. Clients who want self-custody would still leave |
+| **Seed phrase** | A typical Swissquote client will not keep 24 words safe for years; one photo of the words and the money is gone. No screening, no help after a loss |
+| **ERC-4337 smart account** | Elegant on-chain rules, but EVM-only (no Bitcoin), a contract per client and per chain, and on-chain recovery logic that must be audited per chain |
+| **Shamir / SLIP-39 split backup** | The seed is put back together on one device to sign, and Swissquote + the partner could restore it without the client |
+| **2-of-2 MPC (client + Swissquote)** | Swissquote screens every payment, but if Swissquote disappears the client is stuck until an escrow releases B; losing every device means losing the funds |
+| **2-of-3 MPC (chosen)** | The key is never whole; Swissquote co-signs everyday payments (screening, gasless), the client can always sign without Swissquote (A + C), and losing any one part is recoverable |
 
-## What happens in each situation
+**Pros**
+- No single place holds the key: not the phone, not Swissquote, not the paper card.
+- Everyday payments go through Swissquote's screening and fee sponsoring, with Face ID only (no seed words).
+- Any one part can be lost: a lost phone, a lost card, or Swissquote being gone, without losing the funds.
+- One key for Bitcoin and every EVM chain; no smart contract to deploy per client.
+- Ownership is known by construction (Travel Rule), because Swissquote takes part in key creation.
 
-| Situation | What happens |
-|---|---|
-| **Create** | Face ID passkey with Swissquote → two-party key generation → part A stays on this device, part B at Swissquote. Swissquote deposits a copy of B with the escrow agent |
-| **Pay** | Face ID → Swissquote checks the recipient against its list of malicious addresses and decodes the transaction → both parts sign (MPC) → broadcast. USDC and EURC are free: the client signs an EIP-3009 authorization and Swissquote's treasury submits it |
-| **Malicious recipient** | Refused before anything is signed. The app shows *Blocked by Swissquote*; the live presentation shows *Payment blocked* |
-| **Add a device** | Face ID on a device that has part A → one-time link / QR code (10 minutes, single use). The new device creates its own passkey and receives an identical copy of A, encrypted with a key that exists only inside the link (URL fragment, never sent to a server). Swissquote relays a copy it cannot read |
-| **Lose a device** | On another device: *Remove*. Swissquote stops accepting the lost device's passkey, so its copy of A is useless. To use a new device: *Add a device* again |
-| **Swissquote unreachable** | The wallet is **paused**: nothing can be signed without part B |
-| **Grace period over** | Swissquote unreachable for six months (demo: 30 s): a device proves it holds A by co-signing a one-time challenge with the escrow agent, which then hands over its copy of B and deletes it. The device now holds both parts and signs alone (no screening, no sponsoring) |
-| **Every device lost** | The wallet is lost. The app recommends a second device right after creation |
+**Cons**
+- The client can bypass Swissquote's screening by signing A + C. We accept this: it is the price of real self-custody, it needs the paper card, and Swissquote is not liable for payments it did not co-sign.
+- The client must keep the Recovery Card; losing the card **and** every device at the same time means only Swissquote's part is left, which is not enough.
+- MPC needs a commercial licence for the library and an HSM-grade vault in production.
+- Signing needs an online round-trip to the vault for normal payments.
 
-## Coins
+## The questions from the brief
 
-| In the app today | Network | Free through Swissquote |
+**Who could steal funds?** Only someone with two parts: the client's device plus Face ID (A) together with Swissquote's approval (B) or the paper card (C). See the [threat model](threat-model.md).
+
+**Who could lock the client out?** Nobody alone. If Swissquote refuses to co-sign, the client signs with A + C. If the phone is lost, recovery uses C (or the synced passkey, or the backup file) plus B. If Swissquote is gone for good, the notary's copy of B plus any client part works, with the open-source tool.
+
+**Could Swissquote, alone or with a partner, move the funds without the client?** No.
+- Swissquote alone has B only. The encrypted copy of A it keeps (for passkey recovery) opens only with the client's passkey; the encrypted C opens only with the client's card.
+- Swissquote **plus the notary** still has B twice (the notary holds a copy of B, not a third part) and the same encrypted C. Two copies of one part are still one part.
+- Swissquote can't use its recovery process against the client: a recovery needs one part from the client (passkey, backup file or card), a selfie check, and a time-lock during which the client is alerted and can block it.
+
+The API test suite proves the signing side: one part, or the same part twice, can't sign (`tests/e2e-api.test.mjs`).
+
+## Every situation
+
+| Situation | What happens | Parts |
 |---|---|---|
-| USDC | Base Sepolia | Yes |
-| EURC (euro stablecoin) | Base Sepolia | Yes |
-| ETH | Base Sepolia | No (pays its own fee) |
-| BTC | Bitcoin testnet4 | No |
-
-The same public key also gives addresses on Ethereum, Arbitrum, Optimism, Polygon, BNB Chain and Avalanche (the same `0x` address), Litecoin, Dogecoin and Tron; the app lists them under *Receive*. No contract has to be deployed anywhere: enabling another network only needs Swissquote's signing policy to allow it. Ed25519 networks (Solana, Cardano, Sui, Aptos) need a second MPC library (roadmap).
-
-## The three questions from the brief
-
-| Question | Answer |
-|---|---|
-| **Who could steal funds?** | Nobody with one part. A thief needs one of the client's devices *and* its Face ID, and still passes Swissquote's screening. A lost device is removed in one tap |
-| **Who could lock the client out?** | Swissquote could refuse to co-sign while it operates: that is how it blocks malicious payments. If it fails or disappears, the grace period ends the pause |
-| **Could Swissquote move client funds?** | No. It holds one of two parts. The escrow agent holds a copy of the **same** part B, so Swissquote and the agent together still cannot sign without the client |
-
-## Proof that Swissquote cannot act alone
-
-1. **The math.** Two-party threshold ECDSA: a signature needs both parts, in four message rounds. The private key is never reconstructed.
-2. **Tests anyone can rerun** (`cd services && npm test`): client part + Swissquote's part sign; Swissquote + the escrow copy cannot (the same part twice); Swissquote + a forged client part cannot; an identical copy on another device signs like the original. See [`threat-model.md`](threat-model.md) for the full security suite.
-3. **A live insider attack on the real database** (`cd services && npm run insider`, optionally `-- <name> --scan`): Swissquote's stored part and the escrow copy try to sign "send everything to the insider". Every attempt fails; with `--scan` it also checks every 32-byte value in Swissquote's part and confirms none is the private key. It prints no secrets.
-4. **In the app:** *How my key works* shows fingerprints (SHA-256) of the parts, never the parts: the client's devices show the **same** fingerprint, Swissquote's is **different**, the escrow agent's is **identical to Swissquote's**. It also lists every protocol message of the last signature: a few kilobytes each way, while the 121 KB part stays on the device.
-
-## Parameters
-
-| Parameter | Prototype | Production |
-|---|---|---|
-| Grace period before the escrow agent releases its copy | 30 s (`ESCROW_OUTAGE_SEC`) | Six months, triggered by Swissquote's insolvency administrator |
-| Add-a-device link | 10 minutes, single use | Same |
-| Login token | 5 minutes, bound to one transfer | Same |
-| Extra confirmation | Above 1,000 USDC / EURC | Thresholds set by compliance |
-| Sponsored transfers | 10 per wallet per day (`RELAYS_PER_DAY`) | Set by product |
-
-## Honest limits
-
-- Losing **every** device that holds part A means losing the wallet.
-- During the grace period the wallet is paused.
-- Part A sits in the browser's storage on each device. Production encrypts it with a key from the passkey (WebAuthn PRF) or keeps it in the platform keychain.
-- Whoever opens an *Add a device* link within 10 minutes can add a device: show it only as a QR code or send it to yourself. Every added device appears in the device list and the live feed, and can be removed.
-- The MPC library is licensed for non-commercial use; a launch needs a commercial licence.
+| **Create** | Bank login (password + SMS), reference photo, Face ID. Device and vault generate the key together; the device seals A, the card words seal C | A + B generated, C sealed |
+| **Pay** | Swissquote screens the real recipient, the client approves with Face ID (+ SMS above CHF 1,000), the vault co-signs that exact hash | A + B |
+| **Pay for free (USDC, EURC)** | Same, but the signed EIP-3009 authorization is submitted by Swissquote, which pays the fee | A + B |
+| **Use a dApp** | Approved dApps only, explained after a dry run, no unlimited approvals | A + B |
+| **New phone** | "Add a device": the old device encrypts A with a one-time key carried in the QR code; Swissquote relays a copy it can't read | A copied |
+| **Lost phone, other device left** | Remove it on the other device; Swissquote refuses its passkey from then on | — |
+| **Lost every device** | Login, selfie check (KYC), 72-hour time-lock with alerts, then the part the client still has (synced passkey for A, backup file for A, or card for C) + B refresh **all three parts**: same address, new card | A or C, + B |
+| **Swissquote offline** | "Continue without Swissquote": A + C on the device, no screening | A + C |
+| **Swissquote gone for good** | The notary releases its copy of B; `npm run recover-offline` moves everything with any two parts | any 2 |

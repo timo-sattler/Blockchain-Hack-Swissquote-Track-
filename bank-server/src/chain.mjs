@@ -22,7 +22,14 @@ const NETWORKS = {
     approvedDapps: {
       "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14": "WETH (Uniswap, Sepolia)",
       "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238": "USDC (Circle, Sepolia)",
+      "0x000000000022D473030F116dDEE9F6B43aC78BA3": "Uniswap Permit2",
     },
+    // dApps the wallet can call (see dapps.mjs): WETH wraps ETH; Permit2 may receive limited token
+    // approvals (Uniswap's approval contract).
+    dapps: [
+      { address: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", kind: "weth", name: "WETH", title: "Wrapped Ether" },
+      { address: "0x000000000022D473030F116dDEE9F6B43aC78BA3", kind: "spender", name: "Uniswap Permit2", title: "Uniswap's approval contract" },
+    ],
     demoAddresses: [
       { label: "Demo: sanctioned address", addr: "0x098B716B8Aaf21512996dC57EB0615e2383E2f96" },
       { label: "Demo: unknown contract", addr: "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9" },
@@ -48,7 +55,12 @@ const NETWORKS = {
     approvedDapps: {
       "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2": "WETH (Wrapped Ether)",
       "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48": "USDC (Circle)",
+      "0x000000000022D473030F116dDEE9F6B43aC78BA3": "Uniswap Permit2",
     },
+    dapps: [
+      { address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2", kind: "weth", name: "WETH", title: "Wrapped Ether" },
+      { address: "0x000000000022D473030F116dDEE9F6B43aC78BA3", kind: "spender", name: "Uniswap Permit2", title: "Uniswap's approval contract" },
+    ],
     demoAddresses: [],
     tokens: {},
   },

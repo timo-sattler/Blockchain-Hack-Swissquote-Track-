@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { bank, setToken, type ClientView } from "../lib/api";
-import { createInvite } from "../lib/devices";
+import { createInvite, linkIsLocal } from "../lib/devices";
 import { downloadText, keySourceFor } from "../lib/keys";
 import { authName } from "../lib/passkey";
 import { backupFileOf, keyModeOf, wipeDevice, type Profile } from "../lib/profile";
@@ -37,7 +37,7 @@ export function Settings({ profile, client, onBack, onLock, onWiped }: { profile
 
   const reportLost = (d: Device) =>
     run(async () => {
-      if (!confirm(`Remove "${d.deviceLabel}"? Swissquote stops accepting its passkey, so it can no longer approve payments and its copy of Part A becomes useless.`)) return;
+      if (!confirm(`Remove "${d.deviceLabel}"? Swissquote stops accepting its passkey, so it can no longer approve payments with Swissquote.`)) return;
       await bank(`/devices/${encodeURIComponent(d.id)}/report-lost`, "POST");
       await refreshDevices();
     });
@@ -113,6 +113,12 @@ export function Settings({ profile, client, onBack, onLock, onWiped }: { profile
             ))}
             {invite ? (
               <div className="center">
+                {linkIsLocal(invite.link) && (
+                  <Banner kind="warn">
+                    This link points to this computer (localhost), which a phone can't open. For a phone, run <b>npm run tunnel</b> on this computer, then tap
+                    Done and Add a device again.
+                  </Banner>
+                )}
                 <img className="qr" src={invite.qr} alt="QR code to add a device" />
                 <p className="muted small">
                   Scan with your new device's camera, or send the link to yourself. Valid until {new Date(invite.expires).toLocaleTimeString("de-CH")} and for

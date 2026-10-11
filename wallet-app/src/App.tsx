@@ -3,18 +3,20 @@ import { SESSION_EXPIRED, setToken, type ClientView } from "./lib/api";
 import { parseDeviceLink } from "./lib/devices";
 import { loadProfile, type Profile } from "./lib/profile";
 import { AddDevice } from "./screens/AddDevice";
+import { Apps } from "./screens/Apps";
 import { Create } from "./screens/Create";
 import { Home } from "./screens/Home";
 import { Receive } from "./screens/Receive";
 import { Recover } from "./screens/Recover";
 import { Send } from "./screens/Send";
 import { Settings } from "./screens/Settings";
+import { SignIn } from "./screens/SignIn";
 import { Unlock } from "./screens/Unlock";
 import { Welcome } from "./screens/Welcome";
 import { TabBar, type Tab } from "./ui";
 
-type Route = "welcome" | "create" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings";
-const WALLET_ROUTES: Route[] = ["home", "send", "receive", "settings"];
+type Route = "welcome" | "create" | "signin" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings" | "apps";
+const WALLET_ROUTES: Route[] = ["home", "send", "receive", "settings", "apps"];
 
 export function App() {
   const [profile, setProfile] = useState<Profile | null>(loadProfile());
@@ -55,6 +57,14 @@ export function App() {
     return () => window.removeEventListener(SESSION_EXPIRED, onExpired);
   }, []);
 
+  // Signed in with a synced passkey: already logged in to Swissquote, straight to the wallet.
+  const enterSignedIn = (p: Profile, c: ClientView) => {
+    setProfile(p);
+    setClient(c);
+    setNotice(null);
+    setRoute("home");
+  };
+
   const enter = (p: Profile) => {
     setProfile(p);
     setToken(null);
@@ -65,10 +75,13 @@ export function App() {
   let view;
   switch (route) {
     case "welcome":
-      view = <Welcome onCreate={() => setRoute("create")} onRecover={() => setRoute("recover")} />;
+      view = <Welcome onCreate={() => setRoute("create")} onSignIn={() => setRoute("signin")} onRecover={() => setRoute("recover")} />;
       break;
     case "create":
-      view = <Create onBack={() => setRoute("welcome")} onFinished={enter} />;
+      view = <Create onBack={() => setRoute("welcome")} onFinished={enter} onSignedIn={enterSignedIn} onRecover={() => setRoute("recover")} />;
+      break;
+    case "signin":
+      view = <SignIn onBack={() => setRoute("welcome")} onRecover={() => setRoute("recover")} onSignedIn={enterSignedIn} />;
       break;
     case "join":
       view = deviceLink && (
@@ -104,6 +117,9 @@ export function App() {
       break;
     case "send":
       view = profile && <Send profile={profile} client={client} onBack={() => setRoute("home")} />;
+      break;
+    case "apps":
+      view = profile && <Apps profile={profile} client={client} onBack={() => setRoute("home")} />;
       break;
     case "receive":
       view = profile && <Receive profile={profile} onBack={() => setRoute("home")} />;

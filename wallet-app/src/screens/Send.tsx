@@ -7,7 +7,7 @@ import { authName, getPasskey, requirePrf } from "../lib/passkey";
 import { approveAndSend, draftPayment, prepareWithBank, signOffline, type Asset, type Draft, type Sent } from "../lib/pay";
 import { keyModeOf, type Profile } from "../lib/profile";
 import { isValidEthAddress } from "../lib/walletcore";
-import { Banner, Btn, MockSms, PasswordField, Top, short, useAsync } from "../ui";
+import { Banner, Btn, MockSms, PasswordField, Segments, Top, short, useAsync } from "../ui";
 
 interface Screening {
   decision: "ok" | "review" | "blocked";
@@ -184,13 +184,7 @@ export function Send({ profile, client, onBack }: { profile: Profile; client: Cl
         {phase === "form" && (
           <>
             {tokens.length > 0 && (
-              <div className="row wrap">
-                {(["ETH", ...tokens] as Asset[]).map((a) => (
-                  <button key={a} className={`badge chip ${asset === a ? "on" : ""}`} onClick={() => pickAsset(a)} aria-pressed={asset === a}>
-                    {asset === a ? "◉" : "○"} {a}
-                  </button>
-                ))}
-              </div>
+              <Segments items={["ETH", ...tokens] as Asset[]} active={asset} onChange={pickAsset} />
             )}
             <label className="f">To (Ethereum address)</label>
             <input className="f mono" value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" autoCapitalize="none" autoCorrect="off" spellCheck={false} />

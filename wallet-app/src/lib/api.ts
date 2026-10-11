@@ -74,6 +74,8 @@ export interface PublicConfig {
   tokens: Record<string, { address: string; decimals: number; name: string; version: string; chf: number }>;
   tokenFaucet: string | null;
   gasless: { available: boolean; dailyLimit: number };
+  dapps: { address: string; kind: "weth" | "spender"; name: string; title: string; actions: string[] }[];
+  demoDappRequests: { label: string; to: string; data: string; value: string }[];
 }
 
 // Used when the bank was never reached from this device (self-custody mode still needs a chain).
@@ -92,6 +94,8 @@ const DEFAULT_CONFIG: PublicConfig = {
   tokens: {},
   tokenFaucet: null,
   gasless: { available: false, dailyLimit: 0 },
+  dapps: [],
+  demoDappRequests: [],
 };
 
 const CONFIG_KEY = "sq.config.v2";
@@ -108,6 +112,8 @@ function normalize(raw: any): PublicConfig {
     rpcUrls,
     network: { ...DEFAULT_CONFIG.network, ...(raw?.network || {}) },
     demoAddresses: Array.isArray(raw?.demoAddresses) ? raw.demoAddresses : [],
+    dapps: Array.isArray(raw?.dapps) ? raw.dapps : [],
+    demoDappRequests: Array.isArray(raw?.demoDappRequests) ? raw.demoDappRequests : [],
     treasuryTopup: raw?.treasuryTopup ?? Boolean(raw?.treasuryAddress),
   };
 }

@@ -55,9 +55,10 @@ export function saveProfile(p: Profile) {
   }
 }
 
+// Keeps the device ID: it names this browser, not the wallet, and lets this device pick up a
+// recovery it started before the wallet was removed.
 export function wipeDevice() {
   localStorage.removeItem(KEY);
-  localStorage.removeItem("sq.deviceId");
   sessionStorage.clear();
 }
 

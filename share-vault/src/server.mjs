@@ -215,6 +215,19 @@ app.get("/v1/keys/:clientId", (req, res) => {
   res.json({ publicKey: rec.publicKey, version: rec.version });
 });
 
+// What a device restoring the wallet with its synced passkey needs besides the bank's encrypted
+// Part A: the public key, the current version and the card-encrypted Part C (only the card opens it).
+app.post("/v1/keys/:clientId/restore", (req, res) => {
+  try {
+    const t = verifyTicket(req.body.ticket, "restore");
+    if (t.clientId !== req.params.clientId) throw new Error("ticket is for another client");
+    const rec = shareOf(t.clientId);
+    res.json({ publicKey: rec.publicKey, version: rec.version, encC: rec.encC });
+  } catch (e) {
+    res.status(403).json({ error: e.message });
+  }
+});
+
 // Create the key with the client's device. Allowed only with a keygen ticket (wallet not active yet).
 app.post("/v1/keygen/start", (req, res) => {
   try {

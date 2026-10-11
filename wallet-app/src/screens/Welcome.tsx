@@ -3,7 +3,7 @@ import { cachedConfig, config, type PublicConfig } from "../lib/api";
 import { authName, passkeysAvailable } from "../lib/passkey";
 import { Banner, Btn, InstallHint, Top } from "../ui";
 
-export function Welcome({ onCreate, onRecover }: { onCreate: () => void; onRecover: () => void }) {
+export function Welcome({ onCreate, onSignIn, onRecover }: { onCreate: () => void; onSignIn: () => void; onRecover: () => void }) {
   const [cfg, setCfg] = useState<PublicConfig>(cachedConfig());
   useEffect(() => {
     config().then(setCfg);
@@ -19,7 +19,10 @@ export function Welcome({ onCreate, onRecover }: { onCreate: () => void; onRecov
           yours, Swissquote screens every payment it co-signs, and if you lose this device it helps you get the wallet back, but it can never move your funds.
         </p>
         <Btn onClick={onCreate}>Create my Swissquote Wallet</Btn>
-        <Btn kind="secondary" onClick={onRecover}>
+        <Btn kind="secondary" onClick={onSignIn}>
+          I already have a wallet. Sign in
+        </Btn>
+        <Btn kind="link" onClick={onRecover}>
           I lost my device. Recover my wallet
         </Btn>
         <InstallHint />

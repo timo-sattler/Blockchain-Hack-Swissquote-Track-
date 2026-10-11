@@ -57,6 +57,7 @@
                   <button class="danger" onclick="decide('${x.id}','reject')">✗ Mismatch, reject</button>
                 </div>` : x.kycDecision ? `<p>Decision: <b>${esc(x.kycDecision.decision)}</b> ${when(x.kycDecision.at)}</p>` : ""}
               ${x.status === "timelock" ? `<p>Security delay: ${x.secondsLeft}s left</p>` : ""}
+              ${["pending_kyc", "timelock", "released"].includes(x.status) ? `<p><button class="secondary" onclick="closeRec('${x.id}')">Close recovery (client asked, e.g. device reset)</button></p>` : ""}
               ${x.frozenUntil > Date.now() ? `<p><span class="badge bad">recovery frozen</span> <button class="secondary" onclick="unfreeze('${x.clientId}')">Lift freeze (after call-back)</button></p>` : ""}
             </div>
           </div>
@@ -70,6 +71,7 @@
       return "";
     }
     window.decide = async (id, decision) => { await api(`/api/operator/recoveries/${id}/decision`, { method: "POST", token, body: { decision } }).catch((e) => alert(e.message)); load(); };
+    window.closeRec = async (id) => { if (!confirm("Close this open recovery? The client can then start a new one.")) return; await api(`/api/operator/recoveries/${id}/close`, { method: "POST", token }).catch((e) => alert(e.message)); load(); };
     window.unfreeze = async (cid) => { await api(`/api/operator/clients/${cid}/unfreeze`, { method: "POST", token }).catch((e) => alert(e.message)); load(); };
     if (token) start();
   </script>

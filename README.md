@@ -2,9 +2,11 @@
 
 A self-custody wallet Swissquote could launch for its clients: **their keys, their control**. Trust Wallet Core builds every transaction, the key is a 2-of-3 MPC key that never exists in one place, Face ID (passkeys) approves payments, and Swissquote pays the network fee for USDC and EURC. Runs on Ethereum Sepolia.
 
-**Step-by-step guide (computer and iPhone): [`GUIDE.md`](GUIDE.md).**
+**Step-by-step guide (computer and iPhone): [`GUIDE.md`](GUIDE.md).** Hackathon submission summary: [`SUBMISSION.md`](SUBMISSION.md).
 
-The challenge: [`docs/challenge-brief.md`](docs/challenge-brief.md). No crypto background? [`docs/handbook.md`](docs/handbook.md). The documents in `docs/` were written for the earlier two-part design of this wallet; the custody model below supersedes them where they differ.
+The challenge: [`docs/challenge-brief.md`](docs/challenge-brief.md). No crypto background? [`docs/handbook.md`](docs/handbook.md).
+
+![Architecture](docs/img/architecture.png)
 
 ## How it works
 
@@ -18,9 +20,41 @@ The challenge: [`docs/challenge-brief.md`](docs/challenge-brief.md). No crypto b
 
 Any two parts sign. Trust Wallet Core builds every transaction and computes its hash; the bank rebuilds the same hash itself before it lets the vault co-sign, and Trust Wallet Core compiles the signature into the final transaction. **Gasless USDC and EURC**: the client signs an EIP-3009 authorization (also co-signed A + B) and Swissquote's treasury submits it and pays the fee, up to `RELAY_DAILY_LIMIT` transfers per client and day.
 
-Losing a device: remove it from another device (Settings → Devices); Swissquote stops accepting its passkey, so its copy of Part A is useless. Losing everything: identity check (KYC selfie) and a time-lock the real client can cancel, then the part the client still has (synced passkey or backup file for A, paper card for C) and the vault refresh **all three parts**: same address, a new card, and old parts (also on a lost device) stop working with Swissquote. If Swissquote ceases operations, the notary escrow releases its copy of Part B and `tools/emergency-recover.mjs` moves the funds with any two parts, offline from Swissquote.
+Losing a device: remove it from another device (Settings → Devices); Swissquote stops accepting its passkey, so its copy of Part A can no longer get Swissquote's co-signature. Losing everything: identity check (KYC selfie) and a time-lock the real client can cancel, then the part the client still has (synced passkey or backup file for A, paper card for C) and the vault refresh **all three parts**: same address, a new card, and old parts (also on a lost device) stop working with Swissquote. If Swissquote ceases operations, the notary escrow releases its copy of Part B and `tools/emergency-recover.mjs` moves the funds with any two parts, offline from Swissquote.
 
 There are no 24 seed words to export: that would put the whole key in one place. Wallets created with the earlier Shamir version of this app can't be used: run `npm run reset` once (the vault warns at startup).
+
+## Submission checklist
+
+| Brief asks for | Where |
+|---|---|
+| End-to-end story: create → log in and sign → lose → recover | The app; [`GUIDE.md`](GUIDE.md) sections 4, 6, 9; `npm run test:browser` runs it automatically |
+| Transaction signed and sent to a blockchain | Ethereum Sepolia: ETH, USDC, EURC payments, gasless transfers, WETH via Apps ([`GUIDE.md`](GUIDE.md) section 6) |
+| 1. Custody model, pros/cons, threat model, Swissquote alone or with a partner | [`docs/custody-model.md`](docs/custody-model.md), [`docs/threat-model.md`](docs/threat-model.md) |
+| 2. Architecture diagram, real vs. mocked | [`docs/architecture.md`](docs/architecture.md) (diagram above), [Real vs. mocked](#real-vs-mocked) |
+| 3. Wallet creation: where parts are generated and live, link to identity | [How it works](#how-it-works), [`docs/architecture.md`](docs/architecture.md) "Create" |
+| 4. Authentication, high value vs. small | Passkey (Face ID) bound to each payment; SMS code from CHF 1,000 (CHF 20 on the testnet); wallet password fallback. [`docs/architecture.md`](docs/architecture.md) "Pay" |
+| 5. Recovery: who, how long, attacker, Swissquote gone | [`docs/threat-model.md`](docs/threat-model.md); bonus: attacker with the stolen phone and e-mail refused ([`GUIDE.md`](GUIDE.md) section 10) |
+| 6. Business case | [`docs/business-case.md`](docs/business-case.md) |
+| Custody and Travel Rule (legal primer) | [`docs/legal-compliance.md`](docs/legal-compliance.md) |
+| Bonus topics | [Bonus topics](#bonus-topics) |
+| AI tools used | [`pitch/ai-tools.md`](pitch/ai-tools.md) |
+| No homemade cryptography | DKLs23 (Silence Laboratories), Trust Wallet Core, WebAuthn/SimpleWebAuthn, WebCrypto, ethers |
+| Mocked share holder: separate process, own storage, app never holds its share | `share-vault/` runs as its own process with `share-vault/data/`; the app never receives Part B |
+
+## Bonus topics
+
+**Gasless transactions.** Clients send USDC and EURC without owning ETH. The wallet MPC-signs an EIP-3009 `transferWithAuthorization` (EIP-712 typed data: recipient, amount, 10-minute validity, random nonce); Swissquote's treasury submits it and pays the gas.
+- *Who pays:* Swissquote, from its fee account; funded by the recovery subscription.
+- *Abuse prevention:* 10 sponsored transfers per client per day; the recipient is screened first; only the exact authorization the client approved with Face ID is relayed, after a simulation; authorizations expire within an hour and their nonce can be used once; the fee account's balance is checked before the client approves.
+
+**Compliant dApp interaction.** The **Apps** screen lets clients use DeFi (wrap ETH into WETH, the token Uniswap uses) without exposing them or Swissquote to scams and sanctions:
+- approved dApp list; calls to any other contract are refused;
+- Swissquote decodes the request and only allows functions it understands;
+- a dry run on the network before signing, with the effects in plain language ("0.01 ETH leaves your wallet, 0.01 WETH arrives");
+- token approvals only to approved dApps (Uniswap Permit2) and never unlimited;
+- sanctions screening of the contract and of any spender; Face ID + SMS from the high-value threshold.
+Two demo buttons show a scam request (unlimited USDC approval, unknown contract) being refused before anything is signed.
 
 ## Run it
 
@@ -39,7 +73,7 @@ Open **http://localhost:5173**. Demo logins: `SQ-100234` / `Demo-1234` (Anna Kel
 | `npm run status` | Health of bank, vault and app; network, treasury address and balance |
 | `npm run kyc` | List recoveries waiting for identity verification; `npm run kyc -- approve` or `-- reject` decides the latest |
 | `npm run reset` | With the demo stopped: delete client records, vault shares and escrow copy; keeps the treasury key |
-| `npm test` | End-to-end API test against the running demo: MPC key generation, payments, gasless, devices, recovery, emergency tool (real MPC library, Trust Wallet Core, Sepolia RPC; needs a reset demo) |
+| `npm test` | End-to-end API test against the running demo: MPC key generation, payments, gasless, dApps, devices, recovery, emergency tool (real MPC library, Trust Wallet Core, Sepolia RPC; needs a reset demo) |
 | `npm run test:browser` | Browser end-to-end test in Chrome with a virtual passkey; best with `npm run demo:fast` on reset data |
 | `npm run recover-offline -- …` | Emergency recovery without Swissquote: any two parts move all ETH/USDC/EURC to a new address; run without arguments for usage |
 | `npm run tunnel` | Public HTTPS link to the app for phones (cloudflared) |
@@ -63,8 +97,8 @@ Passkeys need `http://localhost` or `https://`; an HTTP LAN IP address does not 
 ├── tools/        Offline emergency recovery
 ├── scripts/      demo-fast, kyc-decide, reset-data, status
 ├── GUIDE.md      Step-by-step guide for using and demoing the app
-├── docs/         Custody model, architecture, threat model, legal, business case, handbook (earlier design)
-└── pitch/        Demo script and AI tools used
+├── docs/         Custody model, architecture, threat model, legal, business case, handbook
+└── pitch/        AI tools used, technical slides (pitch/tech/)
 ```
 
 ## Judging criteria → where it lives
@@ -75,8 +109,8 @@ Passkeys need `http://localhost` or `https://`; an HTTP LAN IP address does not 
 | Security & custody | 20 | [How it works](#how-it-works), [`docs/threat-model.md`](docs/threat-model.md), `tests/` |
 | Legal & compliance | 15 | [`docs/legal-compliance.md`](docs/legal-compliance.md) |
 | Business case | 15 | [`docs/business-case.md`](docs/business-case.md) |
-| UX & pitch | 15 | the app, [`pitch/README.md`](pitch/README.md) |
-| Bonus | +20 | Gasless USDC and EURC (EIP-3009 relay); screening of every payment against malicious addresses |
+| UX & pitch | 15 | the app, [`GUIDE.md`](GUIDE.md), [`pitch/tech/`](pitch/tech/) |
+| Bonus | +20 | [Gasless USDC and EURC](#bonus-topics) (EIP-3009 relay); [compliant dApp interaction](#bonus-topics) (approved list, dry run, plain-language effects, no unlimited approvals, screening) |
 
 ## Real vs. mocked
 
@@ -84,23 +118,14 @@ Passkeys need `http://localhost` or `https://`; an HTTP LAN IP address does not 
 |---|---|
 | 2-of-3 MPC key generation, signing and share refresh (DKLs23), passkeys with PRF, devices with identical copies | **Real** |
 | Transactions built and compiled with Trust Wallet Core on Ethereum Sepolia (ETH, USDC, EURC); gasless USDC/EURC relay | **Real** (testnet) |
-| Screening logic, high-value confirmation, daily limits, relay quota | **Real** code; the sanctions list is a **mock** |
-| Swissquote's bank backend, share vault, notary escrow | **Mock** processes with their own storage |
+| Screening logic, high-value confirmation, daily limits, relay quota, dApp policy with dry runs on Sepolia | **Real** code; the sanctions list and the approved dApp list are small **samples** |
+| Swissquote's bank backend and share vault | **Mock** services, each a separate process with its own storage |
+| Notary escrow | **Mock**: a file the vault mirrors Part B and the encrypted Part C to |
 | Client login, SMS, KYC provider and operator | **Mock** |
 
 ## Tests
 
-With the demo running on reset data (`npm run reset`, then `npm run demo:fast`): `npm test` runs 14 end-to-end API tests (MPC key creation, Swissquote co-signing, screening, SMS for high values, gasless, devices, attacks on recovery, paper-card recovery with share refresh, the emergency tool), and `npm run test:browser` runs both passkey scenarios in Chrome.
-
-## Team
-
-| Person | Focus |
-|---|---|
-| Vincent | |
-| Maxi | |
-| Grace | |
-| Jeroen | |
-| Timo | |
+With the demo running on reset data (`npm run reset`, then `npm run demo:fast`): `npm test` runs 15 end-to-end API tests (MPC key creation, Swissquote co-signing, screening, SMS for high values, gasless, dApp policy, devices, attacks on recovery, paper-card recovery with share refresh, the emergency tool), and `npm run test:browser` runs both passkey scenarios in Chrome. Both suites use the demo clients, so reset the data between them (stop, `npm run reset`, start).
 
 ## Workflow
 
