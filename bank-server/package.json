@@ -1,0 +1,15 @@
+{
+  "name": "bank-server",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MOCK Swissquote bank backend + eBanking portal + KYC/compliance mocks",
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.1.1",
+    "ethers": "^6.13.5",
+    "express": "^4.21.2"
+  }
+}

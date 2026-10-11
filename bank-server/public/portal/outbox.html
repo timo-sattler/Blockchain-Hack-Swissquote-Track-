@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MOCK SMS / e-mail / push outbox</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="common.js"></script>
+</head>
+<body>
+  <header>
+    <div class="logo">Swiss<span>quote</span> Messaging</div>
+    <span class="mock">MOCK SMS / E-MAIL / PUSH GATEWAY</span>
+    <div class="spacer"></div>
+    <nav><a href="index.html">eBanking</a><a href="kyc.html">KYC operator</a></nav>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Everything the bank "sent" (newest first)</h2>
+      <table><tbody id="list"></tbody></table>
+    </div>
+  </main>
+  <script>
+    async function load() {
+      const { outbox } = await api("/api/mock/outbox");
+      document.getElementById("list").innerHTML = outbox.map((m) => `<tr><td class="muted">${when(m.at)}</td><td><span class="badge">${esc(m.channel)}</span></td><td>${esc(m.to)}</td><td style="white-space:pre-wrap">${esc(m.text)}</td></tr>`).join("");
+    }
+    load(); setInterval(load, 3000);
+  </script>
+</body>
+</html>
