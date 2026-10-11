@@ -35,7 +35,7 @@ const browser = await chromium.launch({
 process.on("exit", () => fs.rmSync(tmp, { recursive: true, force: true }));
 
 async function newDevice({ prf }) {
-  const context = await browser.newContext({ acceptDownloads: true, permissions: ["camera"], viewport: { width: 1280, height: 860 } });
+  const context = await browser.newContext({ acceptDownloads: true, permissions: ["camera"], viewport: process.env.SHOTS ? { width: 390, height: 844 } : { width: 1280, height: 860 } });
   const page = await context.newPage();
   page.on("dialog", (d) => d.accept());
   const cdp = await context.newCDPSession(page);
@@ -48,6 +48,14 @@ async function newDevice({ prf }) {
 }
 
 const button = (page, name) => page.getByRole("button", { name });
+
+// SHOTS=<folder>: also save phone-size screenshots of the main screens (for design checks).
+async function shots(page, name, fn) {
+  if (!process.env.SHOTS) return;
+  await fn?.();
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(process.env.SHOTS, `${name}.png`) });
+}
 
 async function bankLogin(page, clientId, password) {
   await page.locator('input[autocomplete="username"]').fill(clientId);
@@ -145,12 +153,29 @@ test("passkey with PRF: create, co-sign, add + remove a device, lose device, rec
   await button(page, /^Unlock with/).click();
   const address = await homeAddress(page);
   await page.getByText(/MPC 2 of 3/).waitFor();
+  await shots(page, "home-portfolio");
+  await shots(page, "home-activity", () => page.getByRole("tab", { name: "Activity" }).click());
+  await shots(page, "home-security", () => page.getByRole("tab", { name: "Security" }).click());
+  await page.getByRole("tab", { name: "Portfolio" }).click();
+
+  // Apps: a scam-style request is explained and refused before anything is signed.
+  await button(page, "Apps").click();
+  await page.getByText("What Swissquote checks").waitFor();
+  await shots(page, "apps");
+  await button(page, /unlimited USDC/).click();
+  await page.getByText(/Swissquote will not co-sign this request/).waitFor();
+  await page.getByText(/could take ALL your USDC/).waitFor();
+  await shots(page, "apps-refused");
+  await button(page, "Back").last().click();
+  await button(page, "Back").first().click();
+  await page.locator(".hero .addr").waitFor();
 
   // Send: an empty wallet gets a clear message instead of a failed broadcast.
   await button(page, /Send/).first().click();
   await page.locator("input.f.mono").fill("0x000000000000000000000000000000000000dEaD");
   await button(page, "Review payment").click();
   await page.getByText(/Not enough ETH/).waitFor();
+  await shots(page, "send");
   // Free USDC transfer: an empty fee account (or an empty wallet) is reported before any approval.
   await page.getByRole("button", { name: /USDC/ }).click();
   await button(page, "Review payment").click();

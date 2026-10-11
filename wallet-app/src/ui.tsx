@@ -1,24 +1,53 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BackIcon, BankIcon, HomeIcon, ProfileIcon, ReceiveIcon, SendIcon } from "./icons";
+import { BackIcon, BankIcon, HomeIcon, ProfileIcon, ReceiveIcon, SendIcon, SqMark } from "./icons";
 import { authName } from "./lib/passkey";
 
-// Swissquote-style header: round back button, centered title (or the wordmark), round actions.
+// Swissquote Crypto wordmark: the round orange mark, "Swissquote" and "Crypto" in blue.
+export const Wordmark = () => (
+  <span className="wordmark">
+    <SqMark />
+    Swissquote <span>Crypto</span>
+  </span>
+);
+
+// Swissquote-style header: the wordmark on the left (or a round back button and a centered title),
+// round actions on the right.
 export function Top({ title, onBack, right }: { title?: string; onBack?: () => void; right?: ReactNode }) {
   return (
-    <div className="top">
+    <div className={`top ${title === undefined && !onBack ? "home" : ""}`}>
       {onBack && (
         <button className="round left" onClick={onBack} aria-label="Back">
           <BackIcon />
         </button>
       )}
-      <div className="brand">
-        {title ?? (
-          <span className="logo">
-            Swiss<span>quote</span> Wallet
-          </span>
-        )}
-      </div>
+      <div className="brand">{title ?? <Wordmark />}</div>
       {right && <div className="right">{right}</div>}
+    </div>
+  );
+}
+
+// Text tabs with an orange underline, as in the Swissquote app (Watchlists · Markets · News).
+export function SubNav<T extends string>({ items, active, onChange }: { items: [T, string][]; active: T; onChange: (t: T) => void }) {
+  return (
+    <div className="subnav" role="tablist">
+      {items.map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={active === k} className={active === k ? "on" : ""} onClick={() => onChange(k)}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Grey pill segments, as in the Swissquote app (Shares · Crypto · Indices).
+export function Segments<T extends string>({ items, active, onChange }: { items: T[]; active: T; onChange: (t: T) => void }) {
+  return (
+    <div className="seg">
+      {items.map((k) => (
+        <button key={k} className={active === k ? "on" : ""} aria-pressed={active === k} onClick={() => onChange(k)}>
+          {k}
+        </button>
+      ))}
     </div>
   );
 }

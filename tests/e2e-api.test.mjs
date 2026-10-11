@@ -147,9 +147,11 @@ function ethInput(tx) {
       maxFeePerGas: be(tx.maxFee),
       toAddress: tx.token ?? tx.to,
       transaction: P.Transaction.create(
-        tx.token
-          ? { erc20Transfer: P.Transaction.ERC20Transfer.create({ to: tx.to, amount: be(tx.amount) }) }
-          : { transfer: P.Transaction.Transfer.create({ amount: be(tx.amount) }) }
+        tx.data
+          ? { contractGeneric: P.Transaction.ContractGeneric.create({ amount: be(tx.amount), data: ethers.getBytes(tx.data) }) }
+          : tx.token
+            ? { erc20Transfer: P.Transaction.ERC20Transfer.create({ to: tx.to, amount: be(tx.amount) }) }
+            : { transfer: P.Transaction.Transfer.create({ amount: be(tx.amount) }) }
       ),
     })
   ).finish();
@@ -171,7 +173,7 @@ const forBank = (tx) => ({
   maxPriorityFeePerGas: String(tx.tip),
   to: tx.token ?? tx.to,
   value: tx.token ? "0" : String(tx.amount),
-  data: tx.token ? erc20.encodeFunctionData("transfer", [tx.to, tx.amount]) : "0x",
+  data: tx.data ?? (tx.token ? erc20.encodeFunctionData("transfer", [tx.to, tx.amount]) : "0x"),
 });
 const fees = { nonce: 0, gasLimit: 21000n, tip: 1_500_000_000n, maxFee: 40_000_000_000n };
 
@@ -338,7 +340,50 @@ test("gasless USDC: the client signs an EIP-3009 authorization with A + B; only 
   }
 });
 
-test("add a device by invite, then remove it: its copy of Part A becomes useless", async (t) => {
+test("compliant dApps: approved apps only, plain-language effects after a dry run, no unlimited approvals", async (t) => {
+  if (state.skip) return t.skip();
+  const token = state.session1;
+  const cfg = await call(BANK, "/api/public/config");
+  const weth = cfg.dapps.find((d) => d.kind === "weth");
+  const permit2 = cfg.dapps.find((d) => d.kind === "spender");
+  const approveIface = new ethers.Interface(["function approve(address,uint256)", "function deposit() payable"]);
+  const simulate = (to, data, value = "0") => call(BANK, "/api/dapps/simulate", { method: "POST", token, body: { to, data, value } });
+
+  const unlimited = await simulate(cfg.tokens.USDC.address, approveIface.encodeFunctionData("approve", ["0x00000000000000000000000000000000DeaDBeef", ethers.MaxUint256]));
+  assert.equal(unlimited.decision, "blocked");
+  assert.match(unlimited.reasons.join(" "), /not on Swissquote's approved dApp list/);
+  assert.match(unlimited.reasons.join(" "), /unlimited/);
+  assert.match(unlimited.effects[0].text, /ALL your USDC/, "the effect is explained in plain language");
+
+  const unknown = await simulate(cfg.demoDappRequests.find((r) => /unknown contract/i.test(r.label)).to, approveIface.encodeFunctionData("deposit"), "1000");
+  assert.equal(unknown.decision, "blocked", "calls to contracts that aren't approved are refused");
+
+  const wrap = await simulate(weth.address, approveIface.encodeFunctionData("deposit"), "1000000000000000");
+  assert.deepEqual(wrap.effects.map((e) => e.dir), ["out", "in"], "wrapping: ETH out, WETH in");
+  assert.match(wrap.reasons.join(" "), /You only have 0 ETH/, "the empty test wallet can't pay, so Swissquote says so before signing");
+
+  // A limited approval to an approved dApp passes the dry run and is co-signed like a payment.
+  const data = approveIface.encodeFunctionData("approve", [permit2.address, 5_000_000n]);
+  const ok = await simulate(cfg.tokens.USDC.address, data);
+  assert.equal(ok.decision, "ok", ok.reasons?.join(" "));
+  assert.match(ok.effects[0].text, /Uniswap Permit2 may take up to 5 USDC/);
+  assert.ok(ok.checks.some((c) => c.ok && /Dry run/.test(c.text)));
+  const tx = { ...fees, gasLimit: 80000n, to: cfg.tokens.USDC.address, amount: 0n, data };
+  const input = ethInput(tx);
+  const hash = preImage(input);
+  const { prep, ok: approved } = await approve(token, state.auth1, { kind: "contract", asset: "ETH", tx: forBank(tx) }, { version: 1 });
+  assert.equal(prep.intent.hash, ethers.hexlify(hash), "the bank rebuilt the dApp call's hash");
+  assert.equal(prep.intent.kind, "contract");
+  const full = finishSignature(hash, await vaultSign(state.parts.a, approved.ticket, hash), state.address);
+  assert.equal(ethers.Transaction.from(compile(input, full, state.parts.publicKey)).from, state.address);
+
+  const bad = await call(BANK, "/api/tx/prepare", { method: "POST", token, body: { kind: "contract", asset: "ETH", tx: forBank({ ...tx, data: approveIface.encodeFunctionData("approve", [permit2.address, ethers.MaxUint256]) }) } });
+  assert.equal(bad.status, 403, "unlimited approvals are refused even to approved dApps");
+  const sneaky = await call(BANK, "/api/tx/prepare", { method: "POST", token, body: { kind: "contract", asset: "ETH", tx: forBank({ ...tx, data: erc20.encodeFunctionData("transfer", [SANCTIONED, 1n]) }) } });
+  assert.equal(sneaky.status, 403, "token transfers can't bypass Send's screening through the dApp path");
+});
+
+test("add a device by invite, then remove it: Swissquote no longer co-signs for its copy of Part A", async (t) => {
   if (state.skip) return t.skip();
   const key = crypto.randomBytes(32);
   const iv = crypto.randomBytes(12);
@@ -430,11 +475,30 @@ test("the recovering device can abandon its recovery and start a new one", async
   assert.equal(r.recovery.status, "pending_kyc");
   const blocked = await call(BANK, "/api/recovery/start", { method: "POST", token: s.token, body: { selfie: "data:image/jpeg;base64,AAAA", path: "paper" } });
   assert.equal(blocked.status, 409, "only one recovery at a time");
+  assert.match(blocked.error, /"Abandon phone".*expires at/, "the conflict says which device holds the open recovery and when it expires");
   const other = await login("other-device");
   const notMine = await call(BANK, `/api/recovery/${r.recovery.id}/abandon`, { method: "POST", token: other.token });
-  assert.equal(notMine.status, 404, "another device can't abandon it (it must use cancel + freeze)");
+  assert.equal(notMine.status, 404, "another device logged in with password + SMS can't abandon it (it must use cancel + freeze)");
   const a = await call(BANK, `/api/recovery/${r.recovery.id}/abandon`, { method: "POST", token: s.token });
   assert.equal(a.recovery.status, "abandoned");
+
+  // A recovery whose share was released but never finished can be discarded by the owner's passkey.
+  const stuck = await call(BANK, "/api/recovery/start", { method: "POST", token: s.token, body: { selfie: "data:image/jpeg;base64,AAAA", path: "paper", deviceLabel: "Abandon phone" } });
+  await operator(`/api/operator/recoveries/${stuck.recovery.id}/decision`, { decision: "approve" });
+  for (;;) {
+    const t = await call(BANK, `/api/recovery/${stuck.recovery.id}/recover-ticket`, { method: "POST", token: s.token });
+    if (t.ticket) break;
+    assert.match(t.error, /Security delay/);
+    await new Promise((ok) => setTimeout(ok, 1000));
+  }
+  const owner = await passkeyLogin(state.auth1, "owner-laptop");
+  const shown = (await call(BANK, "/api/bank/overview", { token: owner.token })).recoveries.find((x) => x.id === stuck.recovery.id);
+  assert.equal(shown.status, "released");
+  const discarded = await call(BANK, `/api/recovery/${stuck.recovery.id}/abandon`, { method: "POST", token: owner.token });
+  assert.equal(discarded.recovery.status, "abandoned", "the owner's passkey closes a stuck recovery from another device");
+  const forgotten = await call(BANK, "/api/recovery/start", { method: "POST", token: other.token, body: { selfie: "data:image/jpeg;base64,AAAA", path: "paper", deviceLabel: "Reset laptop" } });
+  const closed = await operator(`/api/operator/recoveries/${forgotten.recovery.id}/close`, {});
+  assert.equal(closed.recovery.status, "abandoned", "support can close an open recovery when the client calls");
   const again = await call(BANK, "/api/recovery/start", { method: "POST", token: s.token, body: { selfie: "data:image/jpeg;base64,AAAA", path: "paper", deviceLabel: "Abandon phone" } });
   assert.equal(again.recovery.status, "pending_kyc");
   await call(BANK, `/api/recovery/${again.recovery.id}/abandon`, { method: "POST", token: s.token });
@@ -442,7 +506,7 @@ test("the recovering device can abandon its recovery and start a new one", async
   assert.equal(noPhoto.status, 400, "a real photo is required");
 });
 
-test("legit recovery with the paper card: KYC, time-lock, then C + B refresh all parts; same address, old parts dead", { timeout: 400_000 }, async (t) => {
+test("legit recovery with the paper card: KYC, time-lock, then C + B refresh all parts; same address, old parts refused by the vault", { timeout: 400_000 }, async (t) => {
   if (state.skip) return t.skip();
   const s = await login("new-phone");
   const r = await call(BANK, "/api/recovery/start", { method: "POST", token: s.token, body: { selfie: "data:image/jpeg;base64,AAAA", path: "paper", deviceLabel: "New phone" } });

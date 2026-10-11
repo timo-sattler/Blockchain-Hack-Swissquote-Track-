@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1430" height="380" viewBox="0 0 1430 380" font-family="Hind, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#bdbdbd"/></marker></defs>
+<rect x="20" y="30" width="248" height="250" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="56" cy="70" r="18" fill="#5f5f5f"/>
+<text x="56" y="77" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">1</text>
+<text x="42" y="134" fill="#fff" font-size="24" font-weight="700">Log in</text>
+<text x="42" y="176" fill="#d6d6d6" font-size="18">Client ID, password</text>
+<text x="42" y="203" fill="#d6d6d6" font-size="18">and SMS code</text>
+<line x1="272" y1="155.0" x2="298" y2="155.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="302" y="30" width="248" height="250" rx="14" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<circle cx="338" cy="70" r="18" fill="#f05a2a"/>
+<text x="338" y="77" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">2</text>
+<text x="324" y="134" fill="#fff" font-size="24" font-weight="700">Selfie</text>
+<text x="324" y="176" fill="#d6d6d6" font-size="18">Swissquote compares it</text>
+<text x="324" y="203" fill="#d6d6d6" font-size="18">with your onboarding</text>
+<text x="324" y="230" fill="#d6d6d6" font-size="18">photo (KYC)</text>
+<line x1="554" y1="155.0" x2="580" y2="155.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="584" y="30" width="248" height="250" rx="14" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<circle cx="620" cy="70" r="18" fill="#f05a2a"/>
+<text x="620" y="77" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">3</text>
+<text x="606" y="134" fill="#fff" font-size="24" font-weight="700">Safety delay</text>
+<text x="606" y="176" fill="#d6d6d6" font-size="18">72 hours. You are</text>
+<text x="606" y="203" fill="#d6d6d6" font-size="18">notified, and one tap</text>
+<text x="606" y="230" fill="#d6d6d6" font-size="18">blocks it</text>
+<line x1="836" y1="155.0" x2="862" y2="155.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="866" y="30" width="248" height="250" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="902" cy="70" r="18" fill="#5f5f5f"/>
+<text x="902" y="77" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">4</text>
+<text x="888" y="134" fill="#fff" font-size="24" font-weight="700">One part you have</text>
+<text x="888" y="176" fill="#d6d6d6" font-size="18">Synced passkey,</text>
+<text x="888" y="203" fill="#d6d6d6" font-size="18">backup file or</text>
+<text x="888" y="230" fill="#d6d6d6" font-size="18">paper card</text>
+<line x1="1118" y1="155.0" x2="1144" y2="155.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<rect x="1148" y="30" width="248" height="250" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="1184" cy="70" r="18" fill="#5f5f5f"/>
+<text x="1184" y="77" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">5</text>
+<text x="1170" y="134" fill="#fff" font-size="24" font-weight="700">Key refresh</text>
+<text x="1170" y="176" fill="#d6d6d6" font-size="18">Same address, same</text>
+<text x="1170" y="203" fill="#d6d6d6" font-size="18">money. All 3 parts</text>
+<text x="1170" y="230" fill="#d6d6d6" font-size="18">renewed, new card</text>
+<text x="715" y="332" text-anchor="middle" fill="#bdbdbd" font-size="18">The lost phone and the old card stop working with Swissquote. Swissquote alone can never recover the wallet: it always needs one of your parts.</text>
+</svg>

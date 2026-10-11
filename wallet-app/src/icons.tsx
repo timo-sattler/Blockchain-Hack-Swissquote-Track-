@@ -50,3 +50,37 @@ export const ShieldIcon = () => (
     <path d="m9 12 2.2 2.2L15.5 10" />
   </Svg>
 );
+export const AppsIcon = () => (
+  <Svg>
+    <rect x="4" y="4" width="6.5" height="6.5" rx="1.6" />
+    <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6" />
+    <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6" />
+    <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6" />
+  </Svg>
+);
+export const ChevronIcon = () => (
+  <Svg size={18}>
+    <path d="m9 5 7 7-7 7" />
+  </Svg>
+);
+export const SearchIcon = () => (
+  <Svg size={22}>
+    <circle cx="11" cy="11" r="6.5" />
+    <path d="m20 20-4.2-4.2" />
+  </Svg>
+);
+export const LockIcon = () => (
+  <Svg size={22}>
+    <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+    <path d="M8.5 10.5V7.8a3.5 3.5 0 0 1 7 0v2.7" />
+  </Svg>
+);
+
+// The round orange Swissquote mark: a bar over an arched "m", cut in the background colour.
+export const MARK_PATH = "M8 9.5h16v2.4H8zM8 14.5h16v8.2h-2.9v-3.9a1.8 1.8 0 0 0-3.6 0v3.9h-3v-3.9a1.8 1.8 0 0 0-3.6 0v3.9H8z";
+export const SqMark = ({ size = 26 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
+    <circle cx="16" cy="16" r="16" fill="#f0582f" />
+    <path d={MARK_PATH} fill="#222" />
+  </svg>
+);

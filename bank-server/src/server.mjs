@@ -7,10 +7,11 @@
 // tickets for hashes it rebuilt itself from the payment it screened.
 import express from "express";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
-import { getDb, getClient, save, notify, logActivity, publicClient } from "./store.mjs";
+import { DATA_DIR, getDb, getClient, save, notify, logActivity, publicClient } from "./store.mjs";
 import {
   checkPassword,
   issueOtp,
@@ -26,6 +27,7 @@ import {
 } from "./security.mjs";
 import { registrationOptions, verifyRegistration, authenticationOptions, verifyAuthentication, intentHash } from "./webauthn.mjs";
 import { screen, HIGH_VALUE_CHF, sanctionsHit, toChf, valueOf } from "./compliance.mjs";
+import { DEMO_REQUESTS, explainCall, publicDapps } from "./dapps.mjs";
 import {
   provider,
   treasury,
@@ -154,8 +156,22 @@ app.get("/api/public/config", (_req, res) =>
     tokens: Object.fromEntries(Object.entries(TOKENS).map(([k, t]) => [k, { address: t.address, decimals: t.decimals, name: t.name, version: t.version, chf: t.chf }])),
     tokenFaucet: NETWORK.tokenFaucet || null,
     gasless: { available: Object.keys(TOKENS).length > 0, dailyLimit: RELAY_DAILY_LIMIT },
+    dapps: publicDapps(),
+    demoDappRequests: DEMO_REQUESTS,
   })
 );
+
+// The https address of `npm run tunnel`, if it is running: invite links made on localhost use it,
+// since a phone can't open the computer's localhost.
+app.get("/api/public/phone-url", (_req, res) => {
+  let url = null;
+  try {
+    url = fs.readFileSync(path.join(DATA_DIR, "phone-url.txt"), "utf8").trim() || null;
+  } catch {
+    /* no tunnel */
+  }
+  res.json({ url });
+});
 
 // ---------------- Login: client ID + password + SMS OTP ----------------
 app.post("/api/auth/login", wrap(async (req, res) => {
@@ -373,7 +389,7 @@ const big = (v, what) => {
 
 // Returns { hash, to (the real recipient), amount (smallest unit) } for an EIP-1559 transfer the
 // device built with Trust Wallet Core.
-function transferIntent(client, asset, tx) {
+function txFields(tx) {
   if (!tx || typeof tx !== "object") throw fail(400, "missing transaction");
   const fields = {
     type: 2,
@@ -388,6 +404,12 @@ function transferIntent(client, asset, tx) {
   };
   if (!ethers.isAddress(fields.to)) throw fail(400, "bad recipient");
   if (fields.gasLimit > MAX_GAS) throw fail(400, "gas limit too high");
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(fields.data)) throw fail(400, "bad call data");
+  return fields;
+}
+
+function transferIntent(client, asset, tx) {
+  const fields = txFields(tx);
   let to;
   let amount;
   if (asset === "ETH") {
@@ -408,6 +430,15 @@ function transferIntent(client, asset, tx) {
     [to, amount] = call.args;
   }
   return { hash: ethers.Transaction.from(fields).unsignedHash, to: ethers.getAddress(to), amount };
+}
+
+// A call to a dApp: only approved dApps and functions, after a dry run (dapps.mjs).
+async function contractIntent(client, tx) {
+  const fields = txFields(tx);
+  if (fields.data === "0x") throw fail(400, "not a contract call");
+  const explained = await explainCall(client.wallet.address, fields);
+  if (!explained.allowed) throw Object.assign(fail(403, explained.reasons.join(" ")), { explanation: explained });
+  return { hash: ethers.Transaction.from(fields).unsignedHash, to: ethers.getAddress(fields.to), amount: explained.ethWei, explanation: explained };
 }
 
 function gaslessIntent(client, asset, a) {
@@ -443,13 +474,44 @@ app.post("/api/compliance/screen", wrap(async (req, res) => {
   res.json(await screen(client, req.body.to, req.body.amount ?? req.body.valueWei, asset));
 }));
 
+// Before the client approves a dApp request: what it would do, in plain language, and whether
+// Swissquote will co-sign it. /api/tx/prepare checks everything again.
+app.post("/api/dapps/simulate", wrap(async (req, res) => {
+  const { client } = auth(req);
+  if (!client.wallet?.activatedAt) throw fail(400, "Create your Swissquote Wallet first");
+  const to = String(req.body.to || "");
+  if (!ethers.isAddress(to)) throw fail(400, "bad contract address");
+  const data = String(req.body.data || "0x");
+  if (!/^0x([0-9a-fA-F]{2})*$/.test(data) || data === "0x") throw fail(400, "bad call data");
+  const value = big(req.body.value ?? 0, "value");
+  const explained = await explainCall(client.wallet.address, { to: ethers.getAddress(to), value, data });
+  const verdict = await screen(client, to, explained.ethWei.toString(), "ETH");
+  const reasons = [...explained.reasons, ...(verdict.decision === "blocked" ? verdict.reasons : [])];
+  logActivity(client.id, "dapp-simulated", { to, call: explained.call, allowed: reasons.length === 0 });
+  res.json({
+    decision: reasons.length ? "blocked" : "ok",
+    reasons,
+    effects: explained.effects,
+    checks: explained.checks,
+    dapp: explained.dapp,
+    tier: verdict.tier,
+    chf: verdict.chf,
+    highValueChf: HIGH_VALUE_CHF,
+  });
+}));
+
 app.post("/api/tx/prepare", wrap(async (req, res) => {
   const { client } = auth(req);
   if (!client.wallet?.activatedAt) throw fail(400, "Create your Swissquote Wallet first");
   const asset = String(req.body.asset || "ETH");
-  const kind = req.body.kind === "gasless" ? "gasless" : "transfer";
-  const built = kind === "gasless" ? gaslessIntent(client, asset, req.body.authorization) : transferIntent(client, asset, req.body.tx);
-  const verdict = await screen(client, built.to, built.amount.toString(), asset);
+  const kind = ["gasless", "contract"].includes(req.body.kind) ? req.body.kind : "transfer";
+  const built =
+    kind === "gasless"
+      ? gaslessIntent(client, asset, req.body.authorization)
+      : kind === "contract"
+        ? await contractIntent(client, req.body.tx)
+        : transferIntent(client, asset, req.body.tx);
+  const verdict = await screen(client, built.to, built.amount.toString(), kind === "contract" ? "ETH" : asset);
   if (verdict.decision === "blocked") throw Object.assign(fail(403, verdict.reasons.join(" ")), { screening: verdict });
   if (kind === "gasless" && relayQuota(client).remaining === 0) throw fail(429, `You used today's ${RELAY_DAILY_LIMIT} free transfers. Pay the network fee yourself, or try again tomorrow.`);
   const intent = { chainId: CHAIN_ID, from: client.wallet.address, kind, asset, to: built.to, amount: built.amount.toString(), hash: built.hash };
@@ -577,7 +639,16 @@ app.post("/api/recovery/start", wrap(async (req, res) => {
   const { s, client } = auth(req);
   if (!client.wallet?.activatedAt) throw fail(400, "No active wallet to recover");
   if (client.recoveryFrozenUntil > Date.now()) throw fail(423, `Recovery is frozen after a fraud report until ${new Date(client.recoveryFrozenUntil).toLocaleString("de-CH")}. Call Swissquote support.`);
-  if (activeRecovery(client.id)) throw fail(409, "Another recovery is already in progress for this client");
+  const open = activeRecovery(client.id);
+  if (open) {
+    const at = (t) => new Date(t).toLocaleTimeString("de-CH", { hour: "2-digit", minute: "2-digit" });
+    const ends = open.status === "pending_kyc" ? Date.parse(open.createdAt) + KYC_WINDOW_MS : (open.releasedAt || open.unlockAt) + RELEASE_WINDOW_MS;
+    throw fail(
+      409,
+      `A recovery started on "${open.deviceLabel}" at ${at(open.createdAt)} is still open. Finish it on that device, or close it there ("Start a new recovery") or ` +
+        `on a device that still has the wallet (Home → "It was me, discard it"), or ask Swissquote support to close it. Otherwise it expires at ${at(ends)}.`
+    );
+  }
   const { photo, source } = photoFrom({ selfie: req.body.selfie, photoSource: req.body.selfieSource }, "selfie");
   const r = {
     id: crypto.randomUUID(),
@@ -628,7 +699,7 @@ app.post("/api/recovery/:id/cancel", wrap(async (req, res) => {
   sweepRecoveries();
   const r = getDb().recoveries[req.params.id];
   if (!r || r.clientId !== client.id) throw fail(404, "Recovery not found");
-  if (!["pending_kyc", "timelock"].includes(r.status)) throw fail(409, `Recovery is already ${r.status}`);
+  if (!ACTIVE.includes(r.status)) throw fail(409, `Recovery is already ${r.status}`);
   r.status = "cancelled";
   r.cancelledAt = new Date().toISOString();
   client.recoveryFrozenUntil = Date.now() + FREEZE_SECONDS * 1000;
@@ -640,11 +711,13 @@ app.post("/api/recovery/:id/cancel", wrap(async (req, res) => {
 }));
 
 // The device that started a recovery can give up on it (no freeze), e.g. to choose another path.
+// So can the owner on a device that still has the wallet (logged in with its passkey), when the
+// recovery was their own and got stuck.
 app.post("/api/recovery/:id/abandon", wrap(async (req, res) => {
   const { s, client } = auth(req);
   sweepRecoveries();
   const r = getDb().recoveries[req.params.id];
-  if (!r || r.clientId !== client.id || r.deviceId !== s.deviceId) throw fail(404, "Recovery not found for this device");
+  if (!r || r.clientId !== client.id || (r.deviceId !== s.deviceId && s.kind !== "passkey")) throw fail(404, "Recovery not found for this device");
   if (!ACTIVE.includes(r.status)) throw fail(409, `Recovery is already ${r.status}`);
   r.status = "abandoned";
   r.abandonedAt = new Date().toISOString();
@@ -756,6 +829,21 @@ app.post("/api/operator/recoveries/:id/decision", wrap(async (req, res) => {
   }
   save();
   logActivity(r.clientId, `recovery-kyc-${r.kycDecision.decision}`, { recoveryId: r.id });
+  res.json({ recovery: recoveryView(r) });
+}));
+
+// The client called support: close an open recovery that got stuck (for example the device that
+// started it was reset). No freeze, the client can start a new recovery right away.
+app.post("/api/operator/recoveries/:id/close", wrap(async (req, res) => {
+  operator(req);
+  sweepRecoveries();
+  const r = getDb().recoveries[req.params.id];
+  if (!r || !ACTIVE.includes(r.status)) throw fail(409, "This recovery is not open");
+  r.status = "abandoned";
+  r.abandonedAt = new Date().toISOString();
+  save();
+  notify(r.clientId, "Recovery closed by Swissquote", `Swissquote support closed the open recovery from "${r.deviceLabel}" at your request. You can start a new one.`);
+  logActivity(r.clientId, "recovery-closed-by-operator", { recoveryId: r.id });
   res.json({ recovery: recoveryView(r) });
 }));
 

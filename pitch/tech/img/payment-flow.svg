@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="430" viewBox="0 0 1400 430" font-family="Hind, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 10 5 0 10z" fill="#bdbdbd"/></marker></defs>
+<text x="118.0" y="48" text-anchor="middle" fill="#bdbdbd" font-size="17" font-weight="600">Your phone</text>
+<rect x="20" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="56" cy="110" r="18" fill="#5f5f5f"/>
+<text x="56" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">1</text>
+<text x="42" y="176" fill="#fff" font-size="25" font-weight="700">Build</text>
+<text x="42" y="218" fill="#d6d6d6" font-size="17.5">Trust Wallet Core</text>
+<text x="42" y="245" fill="#d6d6d6" font-size="17.5">builds the payment</text>
+<text x="42" y="272" fill="#d6d6d6" font-size="17.5">(ETH, USDC, EURC)</text>
+<line x1="220" y1="205.0" x2="246" y2="205.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="348.0" y="48" text-anchor="middle" fill="#f05a2a" font-size="17" font-weight="600">Swissquote</text>
+<rect x="250" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<circle cx="286" cy="110" r="18" fill="#f05a2a"/>
+<text x="286" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">2</text>
+<text x="272" y="176" fill="#fff" font-size="25" font-weight="700">Screen</text>
+<text x="272" y="218" fill="#d6d6d6" font-size="17.5">Recipient checked</text>
+<text x="272" y="245" fill="#d6d6d6" font-size="17.5">against sanctions</text>
+<text x="272" y="272" fill="#d6d6d6" font-size="17.5">and scam lists</text>
+<line x1="450" y1="205.0" x2="476" y2="205.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="578.0" y="48" text-anchor="middle" fill="#bdbdbd" font-size="17" font-weight="600">Your phone</text>
+<rect x="480" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="516" cy="110" r="18" fill="#5f5f5f"/>
+<text x="516" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">3</text>
+<text x="502" y="176" fill="#fff" font-size="25" font-weight="700">Face ID</text>
+<text x="502" y="218" fill="#d6d6d6" font-size="17.5">Passkey signs this</text>
+<text x="502" y="245" fill="#d6d6d6" font-size="17.5">exact payment and</text>
+<text x="502" y="272" fill="#d6d6d6" font-size="17.5">unlocks Part A</text>
+<line x1="680" y1="205.0" x2="706" y2="205.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="808.0" y="48" text-anchor="middle" fill="#f05a2a" font-size="17" font-weight="600">Swissquote</text>
+<rect x="710" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<circle cx="746" cy="110" r="18" fill="#f05a2a"/>
+<text x="746" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">4</text>
+<text x="732" y="176" fill="#fff" font-size="25" font-weight="700">Approve</text>
+<text x="732" y="218" fill="#d6d6d6" font-size="17.5">Checks the passkey</text>
+<text x="732" y="245" fill="#d6d6d6" font-size="17.5">(+ SMS code above</text>
+<text x="732" y="272" fill="#d6d6d6" font-size="17.5">CHF 1,000)</text>
+<line x1="910" y1="205.0" x2="936" y2="205.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="1038.0" y="48" text-anchor="middle" fill="#f05a2a" font-size="17" font-weight="600">Phone + vault</text>
+<rect x="940" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<circle cx="976" cy="110" r="18" fill="#f05a2a"/>
+<text x="976" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">5</text>
+<text x="962" y="176" fill="#fff" font-size="25" font-weight="700">Co-sign</text>
+<text x="962" y="218" fill="#d6d6d6" font-size="17.5">Part A + Part B</text>
+<text x="962" y="245" fill="#d6d6d6" font-size="17.5">sign together (MPC):</text>
+<text x="962" y="272" fill="#d6d6d6" font-size="17.5">key never assembled</text>
+<line x1="1140" y1="205.0" x2="1166" y2="205.0" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="1268.0" y="48" text-anchor="middle" fill="#bdbdbd" font-size="17" font-weight="600">Ethereum</text>
+<rect x="1170" y="70" width="196" height="270" rx="14" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<circle cx="1206" cy="110" r="18" fill="#5f5f5f"/>
+<text x="1206" y="117" text-anchor="middle" fill="#fff" font-size="19" font-weight="700">6</text>
+<text x="1192" y="176" fill="#fff" font-size="25" font-weight="700">Send</text>
+<text x="1192" y="218" fill="#d6d6d6" font-size="17.5">Broadcast, or</text>
+<text x="1192" y="245" fill="#d6d6d6" font-size="17.5">Swissquote relays</text>
+<text x="1192" y="272" fill="#d6d6d6" font-size="17.5">and pays the fee</text>
+<text x="700" y="392" text-anchor="middle" fill="#bdbdbd" font-size="18">Swissquote approves with a one-time ticket for this payment only. The vault signs nothing else, and never without your Face ID.</text>
+</svg>

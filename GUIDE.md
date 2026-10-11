@@ -55,7 +55,7 @@ Passkeys (Face ID) only work over **https**, so the phone needs a secure link to
 4. Open it from the home screen icon.
 
 Good to know:
-- Use the **same link on every device** you want to use together, including your computer. A passkey works only on the web address where it was created, and the "Add a device" link points to the address you opened it from.
+- A passkey works only on the web address where it was created. A wallet made on the tunnel link opens only on that link. A wallet made on http://localhost:5173 can still add the phone, because the "Add a device" QR code uses the tunnel link while the tunnel runs (section 7).
 - Keep the tunnel running. Every new `npm run tunnel` gives a new address, and wallets made on the old address can't log in there.
 - Face ID unlocks Part A directly on iOS 18 or newer. On older iOS the app asks you to set a **wallet password** instead, and Face ID is still used to approve payments.
 
@@ -68,7 +68,7 @@ Good to know:
 5. **Your paper Recovery Card:** write down the 24 words, or tap **Print** / **Download**. On iPhone, Download opens the share sheet: choose **Save to Files**. Then type the word it asks for and tap **Continue**.
 6. Tap **Open my wallet**, then **Unlock with Face ID**.
 
-You now see your wallet: balance, address, and the badges **Your keys · MPC 2 of 3** and **Travel Rule ✓** (Swissquote has proof the wallet is yours).
+You now see your wallet. **Portfolio** shows the total value, your address, the badges **Your keys · MPC 2 of 3** and **Travel Rule ✓** (Swissquote has proof the wallet is yours) and your assets (ETH, USDC, EURC). **Activity** lists your transactions; tap one to open it on the explorer. **Security** shows where the three key parts are and Swissquote's security notifications.
 
 ## 5. Get test money
 
@@ -99,11 +99,19 @@ Payments of CHF 20 or more (demo threshold) also need an SMS code: approve with 
 ### A blocked payment
 In **Send**, tap the chip **Demo: sanctioned address**, enter any amount, tap **Review payment**. Swissquote refuses: the address is on a sanctions list, and nothing is ever signed.
 
+### A DeFi app (Apps)
+1. On Home, tap **Apps**.
+2. Under **Wrapped Ether**, choose **Wrap**, enter an amount (for example `0.0005`) and tap **Check with Swissquote**.
+3. **What will happen** explains the request in plain words ("0.0005 ETH leaves your wallet, 0.0005 WETH arrives"), and **Swissquote's checks** shows the approved dApp, the request and the successful dry run on Sepolia.
+4. Tap **Approve with Face ID**. The wallet now holds WETH (it appears on Home); **Unwrap** turns it back into ETH.
+
+To show the protection, tap one of the **Try a risky request** buttons: **Unknown app asks for unlimited USDC** or **Call an unknown contract**. Swissquote explains what the request would do ("could take ALL your USDC") and refuses it; nothing is signed.
+
 ## 7. Add a second device (for example your iPhone)
 
-Both devices must use the same web address (see section 3).
+Adding a phone to a wallet made on the computer at http://localhost:5173: run `npm run tunnel` first (section 3). A phone can't open the computer's localhost, so the QR code then points to the tunnel's https address instead. The phone gets its own passkey on that address and the computer keeps using localhost.
 
-1. On the device that has the wallet: **Profile** tab → **Devices** → **Add a device**, and confirm with Face ID. A QR code appears.
+1. On the device that has the wallet: **Profile** tab → **Devices** → **Add a device**, and confirm with Face ID. A QR code appears. If it warns that the link points to localhost, the tunnel isn't running: start it, tap **Done** and **Add a device** again.
 2. On the new device: scan the QR code with the camera (or open the copied link).
 3. Log in with client ID, password and SMS code.
 4. Tap **Protect with Face ID**, then **Unlock with Face ID**. Same wallet, same address. The new device has its own passkey and its own copy of Part A.
@@ -132,11 +140,15 @@ To rehearse, on a device: **Profile** → **Remove wallet from this device (simu
 
 All three key parts were replaced. The lost device and the old card no longer work with Swissquote.
 
-## 10. Stop someone pretending to be you
+## 10. Stop an attacker who has your phone and e-mail
 
-1. On a second browser (the "attacker"), start a recovery for the same client (section 9, steps 1–3).
-2. On your own device, Home shows a red banner, **Someone is trying to recover your wallet**. Tap **That wasn't me. Block it**.
-3. The attacker's recovery is cancelled and new recoveries are frozen. A Swissquote operator can lift the freeze in the KYC console after calling you back.
+The attacker has stolen the phone, so they receive your SMS and e-mail codes. They still can't take the wallet:
+
+1. **The phone itself is useless to them.** Part A on it opens only with your Face ID. On another device (or in eBanking at `/portal/`), tap **Report lost** next to the phone: Swissquote stops accepting it.
+2. **The attacker tries a recovery.** On a second browser (the "attacker"), tap **I lost my device. Recover my wallet**, log in (they have the password and the SMS code), choose any option, take a selfie and tap **Start recovery**.
+3. **The identity check refuses them.** In the KYC console (`/portal/kyc.html`, PIN `kyc-demo`), the selfie doesn't match the photo on file: tap **Mismatch, reject**. The attacker's screen shows **Recovery refused**.
+4. **Even if they fooled the check,** you are alerted during the security delay: on your device, Home shows a red banner **Someone is trying to recover your wallet**. Tap **That wasn't me. Block it** (or **Cancel and freeze** in eBanking). The recovery is cancelled and new recoveries are frozen. A Swissquote operator can lift the freeze in the KYC console after calling you back.
+5. **And even then,** a recovery needs one of your parts (passkey, backup file or Recovery Card), which the attacker doesn't have.
 
 ## 11. Without Swissquote
 
@@ -155,7 +167,7 @@ All links open on the app's address (for example http://localhost:5173):
 | Page | What it shows |
 |---|---|
 | `/portal/` | eBanking: the client's account, linked wallet, devices, recoveries; cancel a recovery |
-| `/portal/kyc.html` | KYC operator console (PIN `kyc-demo`): approve or reject recoveries, lift freezes |
+| `/portal/kyc.html` | KYC operator console (PIN `kyc-demo`): approve or reject recoveries, close a stuck one, lift freezes |
 | `/portal/outbox.html` | Every mock SMS, e-mail and push message |
 
 From a terminal: `npm run kyc -- approve` approves the latest waiting recovery.
@@ -171,3 +183,5 @@ From a terminal: `npm run kyc -- approve` approves the latest waiting recovery.
 | Free transfer: "fee account is empty" | Send Sepolia ETH to the treasury address from `npm run status`. |
 | The terminal warns about "the earlier Shamir version" | Old demo data: stop, `npm run reset`, start again. |
 | "Port … is already in use" | The demo is already running in another terminal. Stop that one first. |
+| "A recovery started on … is still open" | An earlier recovery wasn't finished. On a device that still has the wallet: Home → **It was me, discard it**. Without one: KYC console → **Close recovery**. Or wait until the time it names. |
+| Phone can't connect when opening an "Add a device" QR code | The link points to localhost. Run `npm run tunnel`, then make a new QR code. |

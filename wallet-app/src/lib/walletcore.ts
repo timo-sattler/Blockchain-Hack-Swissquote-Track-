@@ -82,10 +82,13 @@ export interface EthTx {
   gasLimit: bigint;
   maxFeePerGas: bigint;
   maxPriorityFeePerGas: bigint;
-  to: string; // recipient (ETH) or the recipient inside the token transfer
+  to: string; // recipient (ETH), the recipient inside the token transfer, or the dApp contract
   amount: bigint; // wei, or the token's smallest unit
   token?: string; // ERC-20 contract for token transfers
+  data?: string; // 0x call data for a dApp call (amount is then the ETH sent along)
 }
+
+const bytesOfHex = (h: string) => Uint8Array.from((h.replace(/^0x/, "").match(/../g) || []).map((x) => parseInt(x, 16)));
 
 function signingInput(tx: EthTx): Uint8Array {
   const P = TW.Ethereum.Proto;
@@ -98,9 +101,11 @@ function signingInput(tx: EthTx): Uint8Array {
     maxFeePerGas: bigToBytes(tx.maxFeePerGas),
     toAddress: tx.token ?? tx.to,
     transaction: P.Transaction.create(
-      tx.token
-        ? { erc20Transfer: P.Transaction.ERC20Transfer.create({ to: tx.to, amount: bigToBytes(tx.amount) }) }
-        : { transfer: P.Transaction.Transfer.create({ amount: bigToBytes(tx.amount) }) }
+      tx.data
+        ? { contractGeneric: P.Transaction.ContractGeneric.create({ amount: bigToBytes(tx.amount), data: bytesOfHex(tx.data) }) }
+        : tx.token
+          ? { erc20Transfer: P.Transaction.ERC20Transfer.create({ to: tx.to, amount: bigToBytes(tx.amount) }) }
+          : { transfer: P.Transaction.Transfer.create({ amount: bigToBytes(tx.amount) }) }
     ),
   });
   return P.SigningInput.encode(input).finish();
@@ -109,8 +114,8 @@ function signingInput(tx: EthTx): Uint8Array {
 // What Swissquote rebuilds and checks: the EIP-1559 fields as decimal strings plus call data.
 export async function txForBank(tx: EthTx) {
   const { EthereumAbi, EthereumAbiFunction, HexCoding } = await core();
-  let data = "0x";
-  if (tx.token) {
+  let data = tx.data ?? "0x";
+  if (tx.token && !tx.data) {
     const fn = EthereumAbiFunction.createWithString("transfer");
     fn.addParamAddress(HexCoding.decode(tx.to), false);
     fn.addParamUInt256(bigToBytes(tx.amount), false);
@@ -181,6 +186,18 @@ export async function compileTx(tx: EthTx, full: Uint8Array, publicKey: Uint8Arr
   pk.delete();
   if (out.error) throw new Error(`wallet-core compile error: ${out.errorMessage}`);
   return hex0x(HexCoding.encode(out.encoded));
+}
+
+// dApp call data, encoded by Trust Wallet Core's ABI encoder: WETH deposit() / withdraw(amount),
+// ERC-20 approve(spender, amount).
+export async function encodeCall(name: "deposit" | "withdraw" | "approve", args: { amount?: bigint; spender?: string } = {}): Promise<string> {
+  const { EthereumAbi, EthereumAbiFunction, HexCoding } = await core();
+  const fn = EthereumAbiFunction.createWithString(name);
+  if (name === "approve") fn.addParamAddress(HexCoding.decode(args.spender!), false);
+  if (name !== "deposit") fn.addParamUInt256(bigToBytes(args.amount ?? 0n), false);
+  const data = hex0x(HexCoding.encode(EthereumAbi.encode(fn)));
+  fn.delete();
+  return data;
 }
 
 // Transaction hash = keccak256 of the signed raw transaction.

@@ -14,7 +14,7 @@
     "app": "npm run dev -w wallet-app",
     "demo": "concurrently -k -n vault,bank,app -c magenta,blue,green \"npm run vault\" \"npm run bank\" \"npm run app\"",
     "demo:fast": "node scripts/demo-fast.mjs",
-    "tunnel": "npx --yes cloudflared tunnel --protocol http2 --url http://localhost:5173",
+    "tunnel": "node scripts/tunnel.mjs",
     "test": "node --test --test-reporter=spec tests/e2e-api.test.mjs",
     "test:browser": "node --test --test-reporter=spec tests/browser-e2e.mjs",
     "kyc": "node scripts/kyc-decide.mjs",

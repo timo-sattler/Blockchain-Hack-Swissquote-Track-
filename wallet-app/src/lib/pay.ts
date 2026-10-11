@@ -27,6 +27,7 @@ export interface Draft {
   to: string;
   amount: bigint;
   gasless: boolean;
+  contract?: boolean; // a dApp call: `to` is the contract, `amount` the ETH sent along
   tx?: EthTx;
   maxFeeWei?: bigint; // what the client pays in ETH (0 when Swissquote pays)
   authorization?: Authorization;
@@ -78,6 +79,13 @@ export async function draftPayment(profile: Profile, cfg: PublicConfig, asset: A
   return { asset, to, amount, gasless: false, tx, maxFeeWei: fees.maxFeeWei, hash: await preImageHash(tx) };
 }
 
+// A call to an approved dApp (call data from encodeCall). Swissquote explains and dry-runs it first.
+export async function draftContractCall(profile: Profile, cfg: PublicConfig, to: string, data: string, value: bigint): Promise<Draft> {
+  const fees = await prepareFees(profile.address, to, value, data);
+  const tx: EthTx = { chainId: cfg.chainId, to, amount: value, data, nonce: fees.nonce, gasLimit: fees.gasLimit, maxFeePerGas: fees.maxFeePerGas, maxPriorityFeePerGas: fees.maxPriorityFeePerGas };
+  return { asset: "ETH", to, amount: value, gasless: false, contract: true, tx, maxFeeWei: fees.maxFeeWei, hash: await preImageHash(tx) };
+}
+
 export interface Prepared {
   options: unknown;
   intent: { hash: string; to: string; amount: string; asset: string; kind: string };
@@ -90,7 +98,7 @@ export interface Prepared {
 export async function prepareWithBank(draft: Draft): Promise<Prepared> {
   const body = draft.gasless
     ? { kind: "gasless", asset: draft.asset, authorization: draft.authorization }
-    : { kind: "transfer", asset: draft.asset, tx: await txForBank(draft.tx!) };
+    : { kind: draft.contract ? "contract" : "transfer", asset: draft.asset, tx: await txForBank(draft.tx!) };
   const r = await bank<Prepared>("/tx/prepare", "POST", body);
   if (r.intent.hash.toLowerCase() !== `0x${hexOf(draft.hash)}`) throw new Error("Swissquote computed a different transaction than this device. Aborted.");
   return r;

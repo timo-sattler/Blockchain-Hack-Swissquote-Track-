@@ -1,0 +1,74 @@
+<svg style="background:#333333" xmlns="http://www.w3.org/2000/svg" width="1500" height="900" viewBox="0 0 1500 900" font-family="Hind, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#bdbdbd"/></marker><marker id="o" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 10 5 0 10z" fill="#f05a2a"/></marker></defs><g transform="translate(0 50)">
+<rect x="20" y="40" width="400" height="470" rx="16" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<text x="42" y="78" fill="#fff" font-size="23" font-weight="700">Your phone or laptop</text>
+<text x="42" y="104" fill="#bdbdbd" font-size="16">Swissquote Crypto app (installable web app)</text>
+<rect x="38" y="112" width="364" height="50" rx="10" fill="#3d3d3d"/>
+<text x="52" y="133" fill="#fff" font-size="17" font-weight="600">Part A of the key</text>
+<text x="52" y="153" fill="#bdbdbd" font-size="14.5">encrypted on the device (AES-256-GCM)</text>
+<rect x="38" y="172" width="364" height="50" rx="10" fill="#3d3d3d"/>
+<text x="52" y="193" fill="#fff" font-size="17" font-weight="600">Face ID passkey (WebAuthn)</text>
+<text x="52" y="213" fill="#bdbdbd" font-size="14.5">unlocks Part A, approves each payment</text>
+<rect x="38" y="232" width="364" height="50" rx="10" fill="#3d3d3d"/>
+<text x="52" y="253" fill="#fff" font-size="17" font-weight="600">MPC signer (DKLs23, WebAssembly)</text>
+<text x="52" y="273" fill="#bdbdbd" font-size="14.5">signs together with Part B</text>
+<rect x="38" y="292" width="364" height="50" rx="10" fill="#3d3d3d"/>
+<text x="52" y="313" fill="#fff" font-size="17" font-weight="600">Trust Wallet Core (WebAssembly)</text>
+<text x="52" y="333" fill="#bdbdbd" font-size="14.5">builds and compiles transactions</text>
+<rect x="38" y="352" width="364" height="50" rx="10" fill="#3d3d3d"/>
+<text x="52" y="373" fill="#fff" font-size="17" font-weight="600">Wallet password (fallback)</text>
+<text x="52" y="393" fill="#bdbdbd" font-size="14.5">when the passkey can't unlock Part A</text>
+<rect x="20" y="560" width="400" height="200" rx="16" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<text x="42" y="598" fill="#fff" font-size="23" font-weight="700">Paper Recovery Card</text>
+<text x="42" y="624" fill="#bdbdbd" font-size="16">Part C · 24 words</text>
+<text x="42" y="656" fill="#d6d6d6" font-size="17">• Unlocks the encrypted Part C</text>
+<text x="42" y="685" fill="#d6d6d6" font-size="17">• Keep it, or give it to someone</text>
+<text x="58" y="714" fill="#d6d6d6" font-size="17">you trust</text>
+<rect x="560" y="40" width="420" height="330" rx="16" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<text x="582" y="78" fill="#f05a2a" font-size="23" font-weight="700">Swissquote bank</text>
+<text x="582" y="104" fill="#bdbdbd" font-size="16">your account · rules · no key part</text>
+<text x="582" y="136" fill="#d6d6d6" font-size="17">• Login: client ID + password + SMS</text>
+<text x="582" y="165" fill="#d6d6d6" font-size="17">• Checks the passkey for each payment</text>
+<text x="582" y="194" fill="#d6d6d6" font-size="17">• Screens every recipient</text>
+<text x="582" y="223" fill="#d6d6d6" font-size="17">• Issues one-time approval tickets</text>
+<text x="582" y="252" fill="#d6d6d6" font-size="17">• Gasless relay: pays the network fee</text>
+<text x="582" y="281" fill="#d6d6d6" font-size="17">• eBanking + KYC console (recovery)</text><text x="582" y="310" fill="#d6d6d6" font-size="17">• dApp checks: approved list, dry run</text>
+<rect x="560" y="450" width="420" height="310" rx="16" fill="#474747" stroke="#f05a2a" stroke-width="2"/>
+<text x="582" y="488" fill="#f05a2a" font-size="23" font-weight="700">Share vault</text>
+<text x="582" y="514" fill="#bdbdbd" font-size="16">separate service · holds Part B</text>
+<text x="582" y="546" fill="#d6d6d6" font-size="17">• Signs only with a valid ticket</text>
+<text x="582" y="575" fill="#d6d6d6" font-size="17">• Each ticket: one payment, 2 minutes</text>
+<text x="582" y="604" fill="#d6d6d6" font-size="17">• Recovery time-lock and freeze</text>
+<text x="582" y="633" fill="#d6d6d6" font-size="17">• Keeps the encrypted Part C</text>
+<text x="582" y="662" fill="#d6d6d6" font-size="17">• Audit log of every signature</text>
+<rect x="1120" y="40" width="360" height="250" rx="16" fill="#474747" stroke="#6a6a6a" stroke-width="2"/>
+<text x="1142" y="78" fill="#fff" font-size="23" font-weight="700">Ethereum</text>
+<text x="1142" y="104" fill="#bdbdbd" font-size="16">Sepolia testnet today</text>
+<text x="1142" y="136" fill="#d6d6d6" font-size="17">• ETH</text>
+<text x="1142" y="165" fill="#d6d6d6" font-size="17">• USDC, EURC (Circle)</text>
+<text x="1142" y="194" fill="#d6d6d6" font-size="17">• EIP-3009: transfers without</text>
+<text x="1158" y="223" fill="#d6d6d6" font-size="17">paying gas yourself</text>
+<rect x="1120" y="450" width="360" height="250" rx="16" fill="#474747" stroke="#6a6a6a" stroke-width="2" stroke-dasharray="8 6"/>
+<text x="1142" y="488" fill="#fff" font-size="23" font-weight="700">Independent notary</text>
+<text x="1142" y="514" fill="#bdbdbd" font-size="16">escrow, outside Swissquote</text>
+<text x="1142" y="546" fill="#d6d6d6" font-size="17">• Copy of Part B</text>
+<text x="1142" y="575" fill="#d6d6d6" font-size="17">• + the encrypted Part C</text>
+<text x="1142" y="604" fill="#d6d6d6" font-size="17">• Released only if Swissquote</text>
+<text x="1158" y="633" fill="#d6d6d6" font-size="17">stops operating</text>
+<line x1="424" y1="150" x2="556" y2="150" stroke="#bdbdbd" stroke-width="2.5" marker-start="url(#a)" marker-end="url(#a)"/>
+<text x="490" y="120" text-anchor="middle" fill="#d6d6d6" font-size="15.5">login, screening,</text>
+<text x="490" y="140" text-anchor="middle" fill="#d6d6d6" font-size="15.5">Face ID approvals</text>
+<line x1="424" y1="490" x2="556" y2="490" stroke="#f05a2a" stroke-width="2.5" marker-start="url(#o)" marker-end="url(#o)"/>
+<text x="490" y="452" text-anchor="middle" fill="#f05a2a" font-size="15.5">MPC co-signing</text>
+<text x="490" y="472" text-anchor="middle" fill="#f05a2a" font-size="15.5">+ one-time ticket</text>
+<line x1="770" y1="374" x2="770" y2="446" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="784" y="405" text-anchor="start" fill="#d6d6d6" font-size="15.5">tickets (HMAC)</text>
+<text x="784" y="425" text-anchor="start" fill="#d6d6d6" font-size="15.5">freeze</text>
+<line x1="984" y1="120" x2="1116" y2="120" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="1050" y="108" text-anchor="middle" fill="#d6d6d6" font-size="15.5">gasless relay</text>
+<polyline points="220,40 220,-22 1300,-22 1300,36" fill="none" stroke="#bdbdbd" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="760" y="-30" text-anchor="middle" fill="#d6d6d6" font-size="15.5">signed payments (public Ethereum nodes; Swissquote's node as fallback)</text>
+<line x1="984" y1="600" x2="1116" y2="600" stroke="#bdbdbd" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#a)"/>
+<text x="1050" y="588" text-anchor="middle" fill="#d6d6d6" font-size="15.5">mirrors Part B</text>
+<line x1="240" y1="556" x2="240" y2="514" stroke="#bdbdbd" stroke-width="2.5" stroke-dasharray="8 6" marker-end="url(#a)"/>
+<rect x="338" y="56" width="66" height="26" rx="13" fill="#1f8a4c"/><text x="371.0" y="74" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">REAL</text><rect x="338" y="576" width="66" height="26" rx="13" fill="#1f8a4c"/><text x="371.0" y="594" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">REAL</text><rect x="898" y="56" width="66" height="26" rx="13" fill="#b7791f"/><text x="931.0" y="74" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">MOCK</text><rect x="898" y="466" width="66" height="26" rx="13" fill="#b7791f"/><text x="931.0" y="484" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">MOCK</text><rect x="1372" y="56" width="92" height="26" rx="13" fill="#1f8a4c"/><text x="1418.0" y="74" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">TESTNET</text><rect x="1398" y="466" width="66" height="26" rx="13" fill="#b7791f"/><text x="1431.0" y="484" text-anchor="middle" fill="#fff" font-size="13.5" font-weight="700">MOCK</text><text x="20" y="790" fill="#d6d6d6" font-size="16"><tspan fill="#3fbf6f" font-weight="700">REAL</tspan>: production code paths (MPC, passkeys, Trust Wallet Core, Sepolia).</text><text x="20" y="815" fill="#d6d6d6" font-size="16"><tspan fill="#e0a64a" font-weight="700">MOCK</tspan>: the bank backend and the share vault run as separate processes with their own storage; the notary escrow is a separate file the vault mirrors to.</text></g></svg>

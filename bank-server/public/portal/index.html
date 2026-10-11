@@ -149,7 +149,7 @@
           <b>${esc(r.deviceLabel)}</b> · ${when(r.createdAt)} · path: ${r.path === "paper" ? "paper Recovery Card" : r.path === "file" ? "backup file" : "passkey"}<br/>
           Status: <span class="badge ${statusClass(r.status)}">${esc(r.status)}</span>
           ${r.status === "timelock" ? ` · Swissquote's vault takes part in ${r.secondsLeft}s` : ""}
-          ${["pending_kyc","timelock"].includes(r.status) ? `<div style="margin-top:8px"><button class="danger" onclick="cancelRec('${r.id}')">This wasn't me. Cancel and freeze</button></div>` : ""}
+          ${["pending_kyc","timelock","released"].includes(r.status) ? `<div style="margin-top:8px"><button class="danger" onclick="cancelRec('${r.id}')">This wasn't me. Cancel and freeze</button></div>` : ""}
         </div>`).join("") : "None";
 
       $("devices").innerHTML = c.credentials.length ? c.credentials.map((k) => `

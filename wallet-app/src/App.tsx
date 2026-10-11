@@ -3,6 +3,7 @@ import { SESSION_EXPIRED, setToken, type ClientView } from "./lib/api";
 import { parseDeviceLink } from "./lib/devices";
 import { loadProfile, type Profile } from "./lib/profile";
 import { AddDevice } from "./screens/AddDevice";
+import { Apps } from "./screens/Apps";
 import { Create } from "./screens/Create";
 import { Home } from "./screens/Home";
 import { Receive } from "./screens/Receive";
@@ -13,8 +14,8 @@ import { Unlock } from "./screens/Unlock";
 import { Welcome } from "./screens/Welcome";
 import { TabBar, type Tab } from "./ui";
 
-type Route = "welcome" | "create" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings";
-const WALLET_ROUTES: Route[] = ["home", "send", "receive", "settings"];
+type Route = "welcome" | "create" | "recover" | "join" | "unlock" | "home" | "send" | "receive" | "settings" | "apps";
+const WALLET_ROUTES: Route[] = ["home", "send", "receive", "settings", "apps"];
 
 export function App() {
   const [profile, setProfile] = useState<Profile | null>(loadProfile());
@@ -104,6 +105,9 @@ export function App() {
       break;
     case "send":
       view = profile && <Send profile={profile} client={client} onBack={() => setRoute("home")} />;
+      break;
+    case "apps":
+      view = profile && <Apps profile={profile} client={client} onBack={() => setRoute("home")} />;
       break;
     case "receive":
       view = profile && <Receive profile={profile} onBack={() => setRoute("home")} />;

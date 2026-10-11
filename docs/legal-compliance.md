@@ -1,70 +1,78 @@
 # Legal & compliance (Switzerland)
 
-> Engineering reasoning to prepare a conversation with counsel, **not legal advice**. Based on the legal primer in [`challenge-brief.md`](challenge-brief.md). Plain-language background: [`handbook.md`](handbook.md).
+> Engineering reasoning to prepare a conversation with counsel, **not legal advice**. Based on the legal primer in [`challenge-brief.md`](challenge-brief.md).
 
 ## 1. Custody or software?
 
-The brief's test: *custody depends on who can move the funds.* If Swissquote can move a client's crypto on its own, it is custody, with a bank's capital, segregation and insurance duties.
+The primer's test: *custody depends on who can move the funds.*
 
-**Our position: the wallet is self-custody with a mandatory co-signer, not custody.**
+**Our position: self-custody software with a co-signing service, not custody.**
 
 | Fact about the design | Why it matters |
 |---|---|
-| The key exists only as two parts; **both** are needed to sign | Nobody with one part can move funds |
-| Swissquote holds **one** part (B) | It cannot sign a payment alone (tested, and demonstrated on its own database) |
-| The client's part (A) is created on the client's device and never sent to Swissquote; copies to the client's other devices travel encrypted with a key Swissquote never sees | Swissquote cannot obtain part A |
-| The escrow agent holds a **copy of B**, not a third part | Swissquote + agent together still cannot sign: no "Swissquote + partner" path, so the primer's grey zone does not arise |
-| Funds sit at the client's own addresses on public blockchains | They never appear on Swissquote's balance sheet; a Swissquote insolvency does not touch them |
+| The key is a 2-of-3 MPC key; any **two** parts sign | One part alone moves nothing |
+| Swissquote holds **one** part (B) | It can't sign alone (tested: one part, or the same part twice, can't sign) |
+| A is created on the client's device and only leaves it encrypted under the client's passkey or password; copies to other devices travel with a key Swissquote never sees | Swissquote can't obtain A |
+| C is encrypted under the client's paper card; Swissquote stores only the ciphertext | Swissquote can't obtain C |
+| The client alone can sign with A + C | Swissquote is not needed to move the funds, so it does not control them |
+| Funds sit at the client's own address on a public blockchain | Never on Swissquote's balance sheet; not part of an insolvency estate |
 
-**What Swissquote can do:** refuse to co-sign (sanctioned or scam recipients, limits, an unrecognised device), and stop paying fees. All of these can only **stop** a payment, never **make** one. Because Swissquote takes part in every payment, it is a gatekeeper while it operates. We argue that the power to block is not a power of disposal, but this is the main point to confirm with counsel. The six-month grace period with the escrow agent guarantees that the client regains sole control if Swissquote stops operating.
+**Swissquote + a partner (the grey zone).** The notary holds a **copy of B**, not a third part. Swissquote and the notary together still hold one part, so there is no "Swissquote + partner" path to the funds. The recovery process can't be turned into one either: it always needs a part from the client (passkey, backup file or card), a selfie check and a time-lock the client can cancel.
+
+**What Swissquote can do:** refuse to co-sign (sanctioned or scam recipients, unknown dApps, limits, an unrecognised device), stop sponsoring fees, and run the recovery checks. All of these can only **stop** a payment, never **make** one, and the client can still sign with A + C. We argue that a power to block, which the client can always route around, is not a power of disposal. This is the main point to confirm with counsel.
 
 ## 2. Travel Rule and verified ownership
 
-FINMA applies the Travel Rule strictly (FINMA Guidance 02/2019). A Swiss bank may only send crypto to, or receive it from, an external wallet after verifying that its own client controls it. Today that is a manual step (signed messages, test transfers, screenshots).
+Under FINMA's rules (Guidance 02/2019), a Swiss bank may send crypto to, or receive it from, an external wallet only after verifying that its client controls it. Today that is a manual step (signed messages, micro-transfers, screenshots).
 
-**Ownership by construction.** The wallet is created inside the client's authenticated Swissquote session; Swissquote's share service takes part in creating the key and keeps one part. The wallet record links the client, the public key and the derived addresses from the first second. Transfers between the client's Swissquote account and this wallet are transfers between two places the same verified client controls: no manual ownership check needed.
+**Ownership proof, automatic.** The wallet is created inside the client's authenticated Swissquote session, and Swissquote's vault takes part in key generation. Right after creation, the wallet MPC-signs an ownership message (EIP-191, with client ID, address, chain and a nonce); the bank verifies the signature against the public key its own vault holds and stores the proof with the client record (`travelRule.status: verified-self-hosted`). Every later deposit to or withdrawal from the client's Swissquote account is between two places the same verified client controls: no manual check.
 
-**Payments to third parties.** Swissquote co-signs and screens every payment from the wallet, so we treat Swissquote as the **sending institution**: it screens every recipient (implemented), and for transfers to another regulated provider it would attach originator and beneficiary data through a Travel Rule messaging protocol (production). For payments to third parties' unhosted wallets, the bank applies its risk-based controls (screening, limits). Counsel should confirm the exact duties for this case.
+**Paying a third party from the wallet.** The client signs with their own key; Swissquote co-signs but never holds or transfers the client's assets. We therefore treat Swissquote **not** as the sending institution for these payments (the app says so on the review screen). Swissquote still screens every recipient and applies limits, voluntarily and as risk management. Two cases the app distinguishes:
 
-| Prototype | Production |
+| Recipient | What the app says |
 |---|---|
-| Wallet record: wallet ID, name, public key, addresses, passkeys of the client's devices | Plus the Swissquote client ID, written by core banking at creation |
-| Client login and KYC mocked | Swissquote e-banking login and existing KYC |
-| Recipient screening against a mock list | Chain-analytics provider (e.g. Chainalysis, Elliptic) |
-| No Travel Rule messaging | Travel Rule protocol for transfers to regulated providers |
+| Another Swissquote Wallet | Both owners are verified Swissquote clients; no external message needed |
+| The client's own Swissquote account | Deposit from a wallet already proven to be the client's |
+| An external self-hosted wallet | Self-custody payment; Swissquote is not the sending institution; screened |
+| A known exchange or service (production) | The receiving institution runs its own Travel Rule checks; Swissquote could attach data via a Travel Rule network (e.g. TRP, Notabene) if counsel requires it |
 
 ## 3. AML, sanctions and transaction policy
 
-Implemented as real code in the share service (`services/share-service.mjs`), with mocked data sources:
+Real code, mocked data sources:
 
-| Control | Implementation | Production data source |
+| Control | Implementation | Production data |
 |---|---|---|
-| Swissquote reads what it signs | Decodes the EVM transaction, the EIP-3009 authorization or the Bitcoin PSBT itself and signs its **own** hash (the app checks the hashes match) | Same |
-| Screening | Every recipient is checked before anything is signed; a match is refused (`403`) with the reason and logged | Chain-analytics provider |
-| High-value payments | Above 1,000 USDC / EURC the service answers `428` and the client confirms explicitly with a fresh Face ID | Thresholds set by compliance |
-| Allowed assets and networks | Base Sepolia (USDC, EURC, ETH) and Bitcoin testnet4 only; contract calls other than plain token transfers are refused | Allow-list maintained by compliance |
-| Devices | Only registered devices' passkeys are accepted; removed devices are refused | Same, plus device attestation |
+| Swissquote reads what it signs | The bank rebuilds every hash from the transaction fields, decodes token transfers and dApp calls, and the vault signs only that hash; the app aborts if the bank's hash differs from its own | Same |
+| Screening | Every recipient (also inside token transfers) and every dApp contract and token spender, before anything is signed (`compliance.mjs`) | Chainalysis / Elliptic / TRM |
+| High-value payments | From CHF 1,000 (CHF 20 on the testnet): Face ID **and** an SMS code bound to that payment | Thresholds set by compliance |
+| Daily limit | CHF 5,000 per client per day | Risk-based |
+| dApps | Approved list only; known functions only; dry run on the network; plain-language effects; token approvals only to approved dApps and never unlimited (`dapps.mjs`) | Reviewed list maintained by compliance |
+| Gasless | 10 sponsored transfers per client per day, exact authorization only | Pricing tiers |
+| Devices | Only the client's registered passkeys; removed devices are refused | Plus device attestation |
 
-## 4. Insolvency and the grace period
+## 4. Recovery and insolvency
 
-If Swissquote stops operating, the wallet is paused. After six months the independent escrow agent (in production a regulated notary bound by contract, holding the copy of B in an HSM) hands its copy to the client's device, which then signs alone. Six months match an orderly wind-down, during which an administrator could also hand the service to a successor. The client's assets are never part of the bankruptcy estate, but they are not accessible during the grace period: the terms of use must say so clearly, and counsel should assess whether a shorter period is required.
+- **Recovery** is an identity process Swissquote already masters (KYC), plus a time-lock with alerts. It never gives Swissquote a second part.
+- **Insolvency or permanent shutdown:** the client keeps full access with A + C at any time. In addition, the independent notary (in production: a contract with a Swiss notary, the copy in an HSM) releases its copy of B on a confirmed cessation, so a client who lost the card can still recover with A + B. The open-source tool does it without any Swissquote server.
 
 ## 5. Data protection (revFADP)
 
-Swissquote stores only what it needs: wallet ID, client name/ID, public key and addresses, the passkeys' public keys and device names, part B, sponsoring counters and an event log. It never receives the passkeys' private keys or the client's part (copies to other devices pass through Swissquote encrypted with a key it never sees). Blockchain addresses linked to a client are personal data and are handled like account numbers.
+Swissquote stores: client data it already has, the wallet address and public key, passkey public keys and device names, Part B, ciphertexts it can't open (A backup, C), recoveries with selfies, and an activity log. Addresses linked to a client are personal data and are handled like account numbers. Selfies are kept only for the recovery and its audit.
 
-## 6. Other points for counsel
+## 6. Points for counsel
 
-- **Licence of the MPC library:** Silence Laboratories' Silent Shard (DKLs23) is used under a non-commercial licence; a launch needs a commercial licence.
-- **Terms of use:** losing every device that holds the client's part means losing the funds; Swissquote cannot reverse transactions; the wallet pauses during the grace period.
-- **Escrow contract:** the agent's duties, the trigger for release (insolvency, confirmed by the administrator), and deletion of its copy afterwards.
+- Confirm that a blocking-only co-signer the client can bypass is not custody.
+- Confirm Swissquote is not the sending institution for client-signed payments to third parties.
+- MPC library licence: Silence Laboratories' DKLs23 is used under its non-commercial licence; a launch needs a commercial licence.
+- Terms of use: losing every device **and** the card **and** the backup means losing the funds; transactions can't be reversed; what Swissquote screens and what it doesn't when the client signs alone.
+- Notary contract: trigger for release, HSM custody of the copy, deletion afterwards.
 
 ## Real vs. mocked
 
 | Part | Prototype | Production |
 |---|---|---|
-| Client login and KYC | Mocked | Swissquote e-banking + KYC |
-| Ownership by construction (key co-generation) | **Real** | Same, plus client ID in the record |
+| Client login, SMS, KYC | Mocked (codes shown on screen, operator console) | Swissquote e-banking and KYC |
+| Ownership proof | **Real** (MPC-signed, verified against the vault's key) | Same, stored in core banking |
 | Screening | Real policy, mock list | Chain-analytics provider |
-| High-value confirmation | **Real** (`428` + fresh Face ID) | Plus cooling-off for new recipients |
-| Escrow agent and grace period | Mock process, 30-second grace period | Notary contract, HSM, six months |
+| dApp policy and dry run | **Real**, small approved list | List maintained by compliance |
+| Notary | File written by the vault | Contract with a notary, HSM |

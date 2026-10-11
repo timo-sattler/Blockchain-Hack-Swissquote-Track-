@@ -15,7 +15,21 @@ export interface DeviceLink {
   key: Uint8Array;
 }
 
+const isLocal = (host: string) => ["localhost", "127.0.0.1", "[::1]"].includes(host);
+
+// The address the new device opens. A phone can't reach this computer's localhost, so a link made
+// there uses the https address of `npm run tunnel`. The new device gets its own passkey on that
+// address; Swissquote keeps passkeys per address, so both devices keep working.
+async function inviteOrigin(): Promise<string> {
+  if (!isLocal(location.hostname)) return location.origin;
+  const { url } = await bank<{ url: string | null }>("/public/phone-url").catch(() => ({ url: null }));
+  return url ? new URL(url).origin : location.origin;
+}
+
+export const linkIsLocal = (link: string) => isLocal(new URL(link).hostname);
+
 export async function createInvite(profile: Profile, src: KeySource): Promise<{ link: string; expires: number }> {
+  const origin = await inviteOrigin();
   let partA: Uint8Array;
   try {
     partA = await openPartA(profile, src);
@@ -36,7 +50,7 @@ export async function createInvite(profile: Profile, src: KeySource): Promise<{ 
       version: profile.keyVersion,
       publicKey: profile.publicKey,
     });
-    return { link: `${location.origin}${location.pathname}#add-device=${profile.clientId}.${inviteToken}.${toB64url(key)}`, expires };
+    return { link: `${origin}${location.pathname}#add-device=${profile.clientId}.${inviteToken}.${toB64url(key)}`, expires };
   } finally {
     wipe(partA, key);
   }

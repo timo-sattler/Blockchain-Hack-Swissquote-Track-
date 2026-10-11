@@ -1,64 +1,53 @@
 # Architecture
 
-The wallet uses **two-party threshold ECDSA (MPC, 2-of-2)**. One key is generated in two parts: the client's part on their devices and Swissquote's part in its share service. Both parts sign together; the whole key never exists in one place. Because the result is an ordinary ECDSA signature, the same wallet works on Bitcoin and every EVM network.
+![Architecture: app, Swissquote bank, share vault, notary, Ethereum, Recovery Card](img/architecture.png)
 
-![Architecture](../app/public/architecture.svg)
+Source: [`img/architecture.svg`](img/architecture.svg). Green = real code paths, amber = mocked Swissquote infrastructure.
 
 ## Components
 
-| Component | Where | Role | Stores |
-|---|---|---|---|
-| **Wallet app** | `app/` (React, Vite; installable web app) | Swissquote app mock-up with the wallet in the Crypto tab. Runs party 0 of the MPC protocol, builds transactions, shows screening results, adds and removes devices | The client's part A and the device's passkey ID (browser storage) |
-| **Share service** | `services/share-service.mjs`, port 8790 | Swissquote's backend (mock): party 1. Verifies passkeys, decodes and screens every payment, co-signs its own hash, relays add-a-device copies it cannot read, sponsors USDC/EURC fees | Part B, the wallet record (addresses, device passkeys), sponsoring counters (`services/data/share-service/`) |
-| **Treasury** | `services/treasury.mjs` (inside the share service) | Swissquote's fee account on Base Sepolia: submits EIP-3009 authorizations, pays the gas | Its testnet key (`treasury-key.json`, git-ignored) |
-| **Escrow agent** | `services/escrow-agent.mjs`, port 8791 | Independent notary (mock): holds a copy of part B and releases it to the client's device after the grace period | Copies of part B (`services/data/escrow-agent/`) |
-| **Event hub** | `services/hub.mjs`, port 8787 | Collects events and streams them to the live presentation; watches the share service's health | Memory |
-| **Live presentation** | `app/src/present/`, `/present.html` | Slides, live architecture view, activity feed, network graph | — |
-| **Blockchains** | Base Sepolia, Bitcoin testnet4 | Settlement | — |
+| Component | Code | Real or mock | Role | Stores |
+|---|---|---|---|---|
+| **Wallet app** | `wallet-app/` (React, TypeScript, Vite; installable web app for iPhone) | **Real** | MPC party 0 (DKLs23 in WebAssembly), Trust Wallet Core (WebAssembly) for every transaction, passkeys (WebAuthn + PRF), WebCrypto for the encrypted parts | Encrypted Part A, encrypted Part C, public profile (browser storage) |
+| **Swissquote bank** | `bank-server/` (Node.js, Express, SimpleWebAuthn, ethers), port 4000 | **Mock** of Swissquote's backend | Client login (password + SMS), passkey checks, screening (`compliance.mjs`), dApp policy and dry runs (`dapps.mjs`), one-time signing tickets (HMAC), gasless relay and treasury (`chain.mjs`), eBanking portal, KYC console, mock SMS/e-mail outbox | Clients, passkey public keys, wallet links, recoveries, encrypted backup of Part A, activity (`bank-server/data/`) |
+| **Share vault** | `share-vault/` (Node.js, Express, DKLs23 for Node), port 4100 | **Mock** of Swissquote's key-share server: a **separate process with its own storage** | MPC party 1: key generation, co-signing, key refresh. Signs only with a valid single-use ticket for that exact hash; enforces the recovery time-lock and freezes; audit log | Part B, encrypted Part C, used tickets (`share-vault/data/vault.json`) |
+| **Notary escrow** | Written by the vault (`share-vault/data/notary-escrow.json`) | **Mock** of an independent notary | A copy of Part B and the encrypted Part C, released only if Swissquote ceases operating | Copies |
+| **Emergency tool** | `tools/emergency-recover.mjs` | **Real** | Signs with any two parts without any Swissquote server and moves all ETH/USDC/EURC to a new address | — |
+| **Ethereum Sepolia** | Public RPC nodes; bank RPC proxy as fallback; Blockscout for history | **Real** (testnet) | Settlement; Circle's USDC/EURC (EIP-3009); WETH and Uniswap Permit2 as approved dApps | — |
 
-The Vite dev server proxies `/share`, `/escrow` and `/hub`, so the app, the presentation and the services share one origin (and one Cloudflare tunnel for phones). Passkeys are bound to that origin.
+The client app never holds Part B. The vault never sees Part A or the card words.
+
+## Who talks to whom
+
+| From → To | What |
+|---|---|
+| App → Bank | Login, screening, payment preparation (the bank rebuilds the hash itself), passkey approval, tickets, dApp simulation, recovery, devices, relay |
+| App ↔ Vault | MPC rounds (key generation, signing, refresh), each started with a ticket from the bank |
+| Bank → Vault | Tickets travel through the app; the bank calls the vault directly only to read the public key and to freeze recoveries |
+| Vault → Notary | Mirrors Part B and the encrypted Part C after each key generation or refresh |
+| App → Ethereum | Signed transactions and reads (public nodes, bank proxy as fallback) |
+| Bank → Ethereum | Gasless relay (`transferWithAuthorization`), top-ups, dApp dry runs, screening lookups |
 
 ## Flows
 
-**Create.** `POST /wallets` → passkey registration (Face ID) → `POST /wallets/:id/keygen/start` + 4 rounds on `POST /mpc/:sid`: the app runs party 0, the share service party 1. Both end with the same public key; part A stays on the device, part B in the service. The service derives the addresses, deposits a copy of B with the escrow agent and emits `wallet_created`.
+**Create.** Bank login (password + SMS) → reference photo → passkey registration (Face ID) with PRF → `POST /api/wallet/keygen-ticket` → `POST /v1/keygen/start` + rounds on `/v1/mpc/:sid` (the app runs party 0, the vault party 1; a third share is created for the card) → the app seals A under the passkey (or wallet password) and C under the new card's 24 words → the wallet signs a Travel Rule ownership message (EIP-191, MPC-signed) → `POST /api/wallet/link`: the bank checks the signature against the vault's public key and links the address to the client.
 
-**Pay.** The app screens the recipient (`POST /screen`), logs in with the passkey (`/auth/options`, `/login`: a token bound to one transfer), builds the transaction itself and calls `POST /wallets/:id/sign/start`. The service decodes it, screens again, checks the high-value rule and starts signing on **its own** hash; the app verifies the hash matches, completes 3 rounds and combines the signature, then broadcasts. For USDC/EURC the app signs an EIP-3009 authorization instead and `POST /wallets/:id/relay` has the treasury submit it.
+**Pay (ETH, USDC, EURC, dApp call).** Trust Wallet Core builds the transaction and its hash → `POST /api/tx/prepare`: the bank rebuilds the hash from the fields, screens the real recipient (inside a token transfer: the recipient, not the token contract), for dApps runs the policy and a dry run, and returns a passkey challenge bound to that exact payment → Face ID (+ SMS code from CHF 1,000; CHF 20 on the testnet) → `POST /api/tx/approve` returns a ticket (2 minutes, single use, this hash only) → MPC signing with the vault → Trust Wallet Core compiles the signature → broadcast.
 
-**Add a device.** On a device with part A: Face ID → the app encrypts part A with a fresh random key and uploads the ciphertext (`POST /devices/invite`, single use, 10 minutes). The link `#add-device=<wallet>.<invite>.<key>` carries the key in the URL fragment, which browsers never send to servers. The new device registers its own passkey (`/devices/options`, `/devices/register`), receives the ciphertext and decrypts it locally.
+**Gasless USDC/EURC.** As above, but the signed object is an EIP-3009 `TransferWithAuthorization` (EIP-712, random nonce, valid 10 minutes). After co-signing, `POST /api/relay` lets Swissquote's treasury submit exactly that authorization and pay the gas: 10 per client per day, simulated first, only if approved.
 
-**Remove a device.** `POST /devices/remove` from another logged-in device: the service drops that passkey and revokes its tokens.
+**Add a device.** The device with the wallet encrypts A with a fresh key; the ciphertext goes to the bank, the key only into the QR link's `#fragment`. The new device logs in, registers its own passkey, decrypts A and seals it under its own passkey.
 
-**Grace period and takeover.** The escrow agent polls the share service's health. After `ESCROW_OUTAGE_SEC` of downtime (six months in production), `POST /wallets/:id/takeover/start` lets a device co-sign a one-time challenge with the escrow's copy of B; `POST /takeover/finish` verifies the signature against the wallet's public key, returns the copy and deletes it. The device then signs locally with both parts.
+**Recover.** Login → selfie → KYC operator compares with the onboarding photo → time-lock (production 72 h, demo 15–90 s) with alerts to all devices, e-mail and eBanking, cancellable by the client → `recover-ticket` → the client's remaining part (synced passkey or backup file for A, card for C) and the vault run a key refresh: three new parts, same public key and address, new card. The old passkeys are revoked.
 
-## Where the data lives
-
-| Data | App (each device) | Share service | Escrow agent | Blockchain |
-|---|---|---|---|---|
-| Client's part A | ✔ | Only as ciphertext while a device is being added | | |
-| Swissquote's part B | Only after a takeover | ✔ | Copy | |
-| Public key, addresses | ✔ | ✔ | ✔ | Addresses |
-| Passkey private keys | Device passkey manager | | | |
-| Transactions | | | | ✔ |
+**Swissquote gone.** The notary releases its copy of B; `npm run recover-offline -- --client … --card … --to 0x…` (or `--backup`) signs with any two parts and sweeps all funds.
 
 ## Building blocks
 
-| Part | Choice |
+| Need | Library (no homemade cryptography) |
 |---|---|
-| Threshold signatures | Silence Labs Silent Shard (DKLs23): `dkls-wasm-ll-web` in the app, `dkls-wasm-ll-node` in the services |
-| Passkeys | SimpleWebAuthn (browser + server) |
-| EVM | viem: transactions, EIP-712 / EIP-3009, Base Sepolia RPC |
-| Bitcoin | @scure/btc-signer: SegWit transactions; mempool.space testnet4 API |
-| Other networks' addresses | @scure/btc-signer, @scure/base, viem |
-| Tokens | Circle test USDC `0x036C…CF7e` and EURC `0x8084…359F` on Base Sepolia |
-
-## Status and evidence
-
-| Part | State |
-|---|---|
-| Two-party key generation, passkey login, co-signing with decoding and screening | **Built**, covered by the service tests |
-| Gasless USDC and EURC (EIP-3009 relay with daily cap) | **Built**, tested; live relays need a funded treasury |
-| Adding and removing devices | **Built**, covered by the service tests and a headless browser run |
-| Grace period and takeover | **Built**, tested end to end (Swissquote stopped, takeover, payment signed on the device alone) |
-| Custody proof (Swissquote cannot sign alone) | Tests + `npm run insider` + *How my key works* in the app |
-| Real broadcasts on Base Sepolia and Bitcoin testnet4 | **Built**; needs testnet funds in the wallet |
-| Swissquote backend, KYC, list of malicious addresses, escrow agent | **Mocks** (labelled) |
+| Threshold ECDSA (2-of-3, key refresh) | `@silencelaboratories/dkls-wasm-ll-web` / `-node` (DKLs23) |
+| Transactions, hashes, ABI and EIP-712 encoding, addresses (ETH, BTC) | `@trustwallet/wallet-core` |
+| Passkeys | WebAuthn in the browser, `@simplewebauthn/server` on the bank |
+| Encryption of the parts | WebCrypto: AES-256-GCM, HKDF-SHA256, PBKDF2-SHA256 |
+| Bank-side verification, relay, dry runs | `ethers` v6 |
